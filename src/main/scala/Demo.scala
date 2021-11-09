@@ -1,5 +1,6 @@
 
 import scala.io.Source
+import scala.io.StdIn.readLine
 import scala.reflect.ClassTag
 import scala.util.Using.Manager
 import scala.util.matching.Regex
@@ -32,25 +33,14 @@ import scala.util.matching.Regex
 
 object Demo extends App {
 
-  val dictionary: Set[Word] = {
-    val csvParser: Regex = "(?<text>[\\S\\s]+?),(?<language>\\w+)".r
-    val rawData = Manager(_(Source.fromFile("/home/eivind/Nedlastinger/dataset.csv")).mkString).get
-    val formattedData = csvParser.findAllMatchIn(rawData)
-      .drop(1)
-      .map(`match` => `match`.group("language") -> `match`.group("text"))
-      .flatMap{ case (lang,text) => Word.parse(Set(Language.forName(lang).get), text)}
-      .toList
+  val csvParser: Regex = "(?<text>[\\S\\s]+?),(?<language>\\w+)".r
+  val path = "/home/eivind/Nedlastinger/dataset.csv"
+  val dictionary = Dictionary.readFromFile(csvParser, path).get
 
-    formattedData
-      .groupBy(_.text)
-      .values
-      .flatten
-      .toSet
-  }
+  while (true) dictionary.classifyLanguage(readLine("Ready: "))
 
-  dictionary.filter(_.definedIn(Spanish)).foreach{
-    case Word(text, weights) => println(text, weights.take(3))
-  }
+
+
 
 }
 
