@@ -1,4 +1,4 @@
-
+import scala.collection.mutable
 
 class Word private(val text: String, _languages: Language*) extends CharSequence with Iterable[Char] {
 

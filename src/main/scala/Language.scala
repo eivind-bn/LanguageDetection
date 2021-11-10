@@ -25,7 +25,7 @@ sealed class Language(_alphabet: Seq[Char]) {
 case object Thai extends Language('\u0e00' to '\u0e7f')
 case object Korean extends Language('a' to 'z')
 case object Indonesian extends Language('a' to 'z')
-case object Spanish extends Language(('a' to 'z') :++ Set('á', 'é', 'í', 'ó', 'ú', 'ü'))
+case object Spanish extends Language(('a' to 'z') :++ Set('á', 'é', 'í', 'ó', 'ú', 'ü', 'ñ'))
 case object Estonian extends Language('a' to 'z')
 case object Russian extends Language('a' to 'z')
 case object Arabic extends Language('a' to 'z')
