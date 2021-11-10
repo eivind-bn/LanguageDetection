@@ -16,34 +16,34 @@ import scala.collection.immutable.NumericRange
 
 
 sealed class Language(_alphabet: Seq[Char]) {
+  def this(other: Language) = this(other.alphabet.toSeq)
   val alphabet: Set[Char] = _alphabet.toSet
   def upperCase: Set[Char] = alphabet.map(_.toUpper)
   def lowerCase: Set[Char] = alphabet.map(_.toLower)
-  def isSetOf(word: String): Boolean = word.forall(alphabet.contains)
 }
 
 case object Thai extends Language('\u0e00' to '\u0e7f')
-case object Korean extends Language('a' to 'z')
-case object Indonesian extends Language('a' to 'z')
-case object Spanish extends Language(('a' to 'z') :++ Set('á', 'é', 'í', 'ó', 'ú', 'ü', 'ñ'))
+case object Korean extends Language(Latin)
+case object Indonesian extends Language('\u1b00' to '\u1b7f')
+case object Spanish extends Language(Latin.alphabet.toSeq ++ Set('á', 'é', 'í', 'ó', 'ú', 'ü'))
 case object Estonian extends Language('a' to 'z')
 case object Russian extends Language('a' to 'z')
-case object Arabic extends Language('a' to 'z')
+case object Arabic extends Language('\u0600' to '\uFEFF')
 case object Latin extends Language('a' to 'z')
-case object Persian extends Language('a' to 'z')
-case object Japanese extends Language('a' to 'z')
-case object Chinese extends Language('a' to 'z')
-case object Hindi extends Language('a' to 'z')
+case object Persian extends Language('\u0621' to '\u06CC')
+case object Japanese extends Language(('\u3000' to '\u309f') ++ ('\u30a0' to '\u30ff') ++ ('\uff00' to '\uffef') ++ ('\u4e00' to '\u9faf'))
+case object Chinese extends Language(('\u2e80' to '\u2fd5') ++ ('\u3190' to '\u319f') ++ ('\u3400' to '\u4dbf') ++ ('\u4e00' to '\u9fcc') ++ ('\uf900' to '\ufaad'))
+case object Hindi extends Language('\u0900' to '\u097f')
 case object French extends Language('a' to 'z')
-case object Turkish extends Language('a' to 'z')
-case object English extends Language('a' to 'z')
-case object Tamil extends Language('a' to 'z')
+case object Turkish extends Language(Latin.alphabet.toSeq ++ Seq('Ç', 'Ğ', 'I', 'İ', 'Ö', 'Ş', 'Ü'))
+case object English extends Language(Latin)
+case object Tamil extends Language('\u0B80' to '\u0BFA')
 case object Romanian extends Language('a' to 'z')
-case object Dutch extends Language('a' to 'z')
+case object Dutch extends Language(Latin.alphabet.toSeq :+ '\u0132')
 case object Portugese extends Language('a' to 'z')
 case object Pushto extends Language('a' to 'z')
-case object Swedish extends Language('a' to 'z')
-case object Urdu extends Language('a' to 'z')
+case object Swedish extends Language(('a' to 'z') ++ Set('æ', 'ø', 'å'))
+case object Urdu extends Language('\u0627' to '\u06D2')
 object Language{
 
   def intersect(language: Language*): Language = language

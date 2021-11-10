@@ -1,8 +1,5 @@
 
-import scala.collection.mutable
-import scala.io.Source
-import scala.reflect.ClassTag
-import scala.util.Using.Manager
+import scala.io.StdIn.readLine
 import scala.util.matching.Regex
 
 /**
@@ -33,29 +30,10 @@ import scala.util.matching.Regex
 
 object Demo extends App {
 
-  val dictionary: mutable.Set[Word] = {
-    val csvParser: Regex = "(?<text>[\\S\\s]+?),(?<language>\\w+)".r
-    val rawData = Manager(_(Source.fromFile("/home/eivind/Nedlastinger/dataset.csv")).mkString).get
-    val formattedData = csvParser.findAllMatchIn(rawData)
-      .drop(1)
-      .map(`match` => `match`.group("language") -> `match`.group("text"))
-      .flatMap{ case (lang,text) => Word.parse(Set(Language.forName(lang).get), text)}
-      .toList
+  val csvParser: Regex = "(?<text>[\\S\\s]+?),(?<language>\\w+)".r
+  val path = "/home/eivind/Nedlastinger/dataset.csv"
+  val dictionary = Dictionary.readFromFile(csvParser, path).get
 
-    formattedData
-      .groupBy(_.text)
-      .values
-      .flatten
-      .to(mutable.HashSet)
-  }
-
-  dictionary.iterator.filter(_.definedIn(Thai)).map(_.intersections).foreach(println)
-  for{
-    word <- dictionary
-    weight <- word.weights
-  } if(weight.isInstanceOf[ImmutableWeight]) println(weight.language, word)
-
-  Thread.sleep(10000)
-
+  while (true) dictionary.classifyLanguage(readLine("Ready: "))
 }
 
