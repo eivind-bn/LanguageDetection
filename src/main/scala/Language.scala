@@ -138,8 +138,6 @@ object Language{
     .maxByOption(_._2)
     .foreach{ case (language, score, primes, heuristic) =>
 
-//      def yieldWeight(p0: BigDecimal, n: Int, n_total: Int) =
-//        (p0.pow(2)*n + 2*p0*n + ((n_total.toDouble - n)/n_total))/(2*n + 2*p0*n)
       val p = (primes.map(_.score).sum + heuristic.map(_.score).sum) / (primes.length + heuristic.length)
 
       def yieldWeight(p0: BigDecimal, p:Double, n: Int) =
