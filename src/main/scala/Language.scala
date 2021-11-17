@@ -5,8 +5,6 @@
 import java.lang.Character.UnicodeBlock._
 import java.lang.Character.UnicodeScript.{HIRAGANA => Hiragana, KATAKANA => Katakana, _}
 import java.lang.Character.{UnicodeBlock, UnicodeScript}
-import java.math.{MathContext, RoundingMode}
-import scala.annotation.tailrec
 import scala.collection.mutable
 import scala.io.Source
 import scala.util.Using.Manager
@@ -73,8 +71,14 @@ sealed trait Language { lang:Product =>
     override def toString: String = s"${lang.productPrefix}.Word($text)"
   }
   case class HeuristicWord(text: String) extends Word{
-    var score: Double = entries.get(text).map(_.score).getOrElse(0.0)
-    def percent: Int = (BigDecimal(score).round(new MathContext(2, RoundingMode.HALF_UP))*100).toInt
+    private var _score: Double = entries.get(text).map(_.score).getOrElse(0.0)
+    def score: Double = _score
+    def meanAdjust(totalScore: Double, numberOfWords: Int): Unit = _score = (_score + (totalScore / numberOfWords))/2
+    def adjust(p0: Double, n: Int): Unit = p0 match {
+      case p0 if p0 != score => _score = (_score*_score*n + 2*_score*n + p0)/(2*n + 2*_score*n)
+      case _ =>
+    }
+    def percent: Int = (score * 100).toInt
     override def toString: String = s"${lang.productPrefix}.Word($text p=$percent%)"
   }
 
@@ -144,7 +148,8 @@ object Language{
         (p0.pow(2)*n + 2*p0*n + p)/(2*n + 2*p0*n)
 
       for(hw <- heuristic) {
-        hw.score = yieldWeight(hw.score, p, heuristic.length).toDouble
+//        hw.adjust(p, heuristic.length)
+        hw.meanAdjust(score, primes.length + heuristic.length)
       }
 
       println(s"$language: ${primes.mkString("\t")} ${heuristic.mkString("\t")}")
