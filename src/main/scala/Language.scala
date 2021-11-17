@@ -7,6 +7,7 @@ import java.lang.Character.UnicodeScript.{HIRAGANA => Hiragana, KATAKANA => Kata
 import java.lang.Character.{UnicodeBlock, UnicodeScript}
 import scala.collection.mutable
 import scala.io.Source
+import scala.util.Try
 import scala.util.Using.Manager
 import scala.util.matching.Regex
 
@@ -15,48 +16,41 @@ import scala.util.matching.Regex
  * in existing ones. Words on the other hand is not statically known. New words can be deduced by context,
  * i.e. being surrounded by existing ones from known languages. Weights associated with heuristic words should
  * also change as the model progresses.
- * These wrapper objects offers language inspections which is statically known, such as the alphabet.
- * Words which contains thai letters,
- * may trivially be discarded from english model, because english and thai alphabet have no mutual letters.
- * Words which is comprised of letters from intersecting alphabets, must be deduced by machine learning.
- *
- * NOTE: might disable alphabetic filtering to make the model more heuristic.
- */
-
-
-/*
- * Data-set:
- *
- * word | language
- * ---------------------------
- * name | english
- * is   | english, norwegian
- * ---------------------------
- *
- * Sample:
- *
- * My name är John Doe.
- *
- * p_english = 2/5
- * p_norwegian = 1/5
  *
  */
 
 sealed trait Language { lang:Product =>
 
+  //Mutable object. Limit scope as much as possible.
   private val entries: mutable.HashMap[String,Word] = mutable.HashMap()
 
-  sealed trait Word extends CharSequence {
+  //Returns the immutable word-set of this language. NOTE: The origin of particular word dictates whether they are
+  //mutable or not. Words from dataset are immutable. Words from untrusted data are mutable. This collection may
+  //be comprised of both, and side-effect inducing methods on words will be undefined.
+  def vocabulary: Set[Word] = entries.values.toSet
 
-    def score: Double
+  def loadTrainData(text: String): Seq[Word] = splitWords(text)
+    .flatMap(Word.parseTrain(_).toOption)
+    .toSeq
+
+  def loadSampleData(text: String): Seq[Word] = splitWords(text)
+    .flatMap(Word.parseSample(_).toOption)
+    .toSeq
+
+  protected[this] def mayContain(chars: Char*): Boolean
+  protected[this] def splitWords(text: String): Array[String] = text
+    .strip()
+    .toLowerCase
+    .filter(char => char.isLetter || char.isWhitespace || char == '\'')
+    .split("[\\s-]+")
+    .filter(word => word.length > 1 && mayContain(word.toSeq:_*))
+
+
+  sealed trait Word extends CharSequence {
     val text: String
 
-    entries.updateWith(text) {
-      case Some(word: PrimeWord) => Some(word)
-      case Some(_) => Some(this)
-      case None => Some(this)
-    }
-
+    def score: Double
+    def meanAdjust(totalScore: Double, numberOfWords: Int): Unit
     override def length(): Int = text.length
     override def charAt(index: Int): Char = text.charAt(index)
     override def subSequence(start: Int, end: Int): CharSequence = text.subSequence(start, end)
@@ -66,30 +60,39 @@ sealed trait Language { lang:Product =>
       case _ => false
     }
   }
-  case class PrimeWord(text: String) extends Word{
-    override val score: Double = 1.0
-    override def toString: String = s"${lang.productPrefix}.Word($text)"
-  }
-  case class HeuristicWord(text: String) extends Word{
-    private var _score: Double = entries.get(text).map(_.score).getOrElse(0.0)
-    def score: Double = _score
-    def meanAdjust(totalScore: Double, numberOfWords: Int): Unit = _score = (_score + (totalScore / numberOfWords))/2
-    def adjust(p0: Double, n: Int): Unit = p0 match {
-      case p0 if p0 != score => _score = (_score*_score*n + 2*_score*n + p0)/(2*n + 2*_score*n)
-      case _ =>
-    }
-    def percent: Int = (score * 100).toInt
-    override def toString: String = s"${lang.productPrefix}.Word($text p=$percent%)"
-  }
+  private[this] object Word{
 
-  def loadData(text: String): Seq[PrimeWord] = splitWords(text).map(PrimeWord).toSeq
-  def mayContain(chars: Char*): Boolean
-  protected def splitWords(text: String): Array[String] = text
-    .strip()
-    .toLowerCase
-    .filter(char => char.isLetter || char.isWhitespace || char == '\'')
-    .split("[\\s-]+")
-    .filter(word => word.length > 1 && mayContain(word.toSeq:_*))
+    def parseTrain(_text: String): Try[Word] = Try { new Word {
+      override val text: String = _text
+      // Insert this word disregarding prior entries. All words sourced from dataset are immutable, and behave the same,
+      // so no if-checking required. If prior entry is sourced from normal input, desired behaviour is to invalidate it.
+      entries.update(text, this)
+      override def meanAdjust(totalScore: Double, numberOfWords: Int): Unit = {/*NOOP*/}
+      override def score: Double = 1.0
+      override def toString: String = s"${lang.productPrefix}.Word($text)"
+    }}
+
+    def parseSample(_text: String): Try[Word] = Try{ new Word {
+      override val text: String = _text
+      var _score: Double = entries.get(text).map(_.score).getOrElse(0.0)
+      override def score: Double = _score
+      def percent: Int = (score * 100).toInt
+
+      // Inserts this instance if no equal entry exist. If it does, it could have been sampled from a dataset
+      // which claims higher priority. This instance should then relay method calls to that instance instead.
+      private val entry: Word = entries.getOrElseUpdate(text, this)
+
+      override def meanAdjust(totalScore: Double, numberOfWords: Int): Unit = entry match {
+        case entry if entry eq this => _score = (_score + (totalScore / numberOfWords))/2
+        case entry => entry.meanAdjust(totalScore, numberOfWords)
+      }
+
+      override def toString: String = entry match {
+        case entry if entry eq this => s"${lang.productPrefix}.Word($text p=$percent%)"
+        case entry => entry.toString
+      }
+    }}
+  }
 }
 
 case object Thai extends Language.Spanning(Language.Letters.thai)
@@ -117,44 +120,21 @@ case object Urdu extends Language.Spanning(Language.Letters.urdu)
 
 object Language{
 
-  def dictionary: Map[String,Seq[Language#Word]] = values.toSeq.flatMap(_.entries).groupMap(_._1)(_._2)
+  def dictionary: Map[String,Seq[Language#Word]] = languages.toSeq.flatMap(_.entries).groupMap(_._1)(_._2)
 
   def loadFromFile(regex: Regex, path: String): Unit = for{
     data <- Manager(manager => manager(Source.fromFile(path)).mkString)
     regex <- regex.findAllMatchIn(data)
     (lang,text) = regex.group("language") -> regex.group("text")
-  } Language.forName(lang).foreach(_.loadData(text))
+  } Language.forName(lang).foreach(_.loadTrainData(text))
 
-  def classifyLanguage(sample: String): Unit = values.map{lang =>
-    val (primes, heuristic) = lang
-      .splitWords(sample)
-      .map(text => lang.entries.getOrElse(text, lang.HeuristicWord(text)))
-      .partitionMap {
-        case self@lang.PrimeWord(text) => Left(self)
-        case self@lang.HeuristicWord(text) => Right(self)
-      }
-
-    val score = primes.map(_.score).sum + heuristic.map(_.score).sum
-
-    (lang, score, primes, heuristic)
-  }
-    .filterNot(_._2 == 0.0)
-    .maxByOption(_._2)
-    .foreach{ case (language, score, primes, heuristic) =>
-
-      val p = (primes.map(_.score).sum + heuristic.map(_.score).sum) / (primes.length + heuristic.length)
-
-      def yieldWeight(p0: BigDecimal, p:Double, n: Int) =
-        (p0.pow(2)*n + 2*p0*n + p)/(2*n + 2*p0*n)
-
-      for(hw <- heuristic) {
-//        hw.adjust(p, heuristic.length)
-        hw.meanAdjust(score, primes.length + heuristic.length)
-      }
-
-      println(s"$language: ${primes.mkString("\t")} ${heuristic.mkString("\t")}")
-    }
-
+  def classifyLanguage(sample: String): Unit = languages
+    .map(lang => (lang, lang.loadSampleData(sample))) // Parse input text
+    .map{ case (language, words) => (language, words, words.map(_.score).sum) } // Calculate score by language
+    .maxByOption{ case (language, words, score) => score } // Pick highest score
+    .tapEach{ case (language, words, score) => words.foreach(_.meanAdjust(score, words.length)) } // Adjust winner weights.
+    .map{ case (language, words, score) => s"$language: ${words.mkString("\t")}" } // Generate result.
+    .foreach(println) // Printing result. Will change in near commit.
 
   sealed abstract class Spanning(letters: Iterable[Char]*) extends Language { this:Product =>
     override def mayContain(chars: Char*): Boolean = chars
@@ -202,7 +182,6 @@ object Language{
 
   def forName(name: String): Option[Language] = name.strip().toLowerCase match {
     case "thai" => Some(Thai)
-    case "korean" => Some(Korean)
     case "indonesian" => Some(Indonesian)
     case "spanish" => Some(Spanish)
     case "estonian" => Some(Estonian)
@@ -211,8 +190,9 @@ object Language{
     case "arabic" => Some(Arabic)
     case "latin" => Some(Latin)
     case "persian" => Some(Persian)
-    case "japanese" => Some(Japanese)
     case "chinese" => Some(Chinese)
+    case "japanese" => Some(Japanese)
+    case "korean" => Some(Korean)
     case "hindi" => Some(Hindi)
     case "french" => Some(French)
     case "turkish" => Some(Turkish)
@@ -226,9 +206,8 @@ object Language{
     case _ => None
   }
 
-  def values: Set[Language] = Set(
+  def languages: Set[Language] = Set(
     Thai,
-    Korean,
     Indonesian,
     Spanish,
     Estonian,
@@ -236,8 +215,9 @@ object Language{
     Arabic,
     Latin,
     Persian,
-    Japanese,
     Chinese,
+    Japanese,
+    Korean,
     Hindi,
     French,
     Turkish,
