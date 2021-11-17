@@ -30,11 +30,11 @@ sealed trait Language { lang:Product =>
   def vocabulary: Set[Word] = entries.values.toSet
 
   def loadTrainData(text: String): Seq[Word] = splitWords(text)
-    .flatMap(Word.parseTrain(_).toOption)
+    .map(Word.parseTrain)
     .toSeq
 
   def loadSampleData(text: String): Seq[Word] = splitWords(text)
-    .flatMap(Word.parseSample(_).toOption)
+    .map(Word.parseSample)
     .toSeq
 
   protected[this] def mayContain(chars: Char*): Boolean
@@ -62,7 +62,7 @@ sealed trait Language { lang:Product =>
   }
   private[this] object Word{
 
-    def parseTrain(_text: String): Try[Word] = Try { new Word {
+    def parseTrain(_text: String): Word = new Word {
       override val text: String = _text
       // Insert this word disregarding prior entries. All words sourced from dataset are immutable, and behave the same,
       // so no if-checking required. If prior entry is sourced from normal input, desired behaviour is to invalidate it.
@@ -70,9 +70,9 @@ sealed trait Language { lang:Product =>
       override def meanAdjust(totalScore: Double, numberOfWords: Int): Unit = {/*NOOP*/}
       override def score: Double = 1.0
       override def toString: String = s"${lang.productPrefix}.Word($text)"
-    }}
+    }
 
-    def parseSample(_text: String): Try[Word] = Try{ new Word {
+    def parseSample(_text: String): Word = new Word {
       override val text: String = _text
       var _score: Double = entries.get(text).map(_.score).getOrElse(0.0)
       override def score: Double = _score
@@ -91,7 +91,7 @@ sealed trait Language { lang:Product =>
         case entry if entry eq this => s"${lang.productPrefix}.Word($text p=$percent%)"
         case entry => entry.toString
       }
-    }}
+    }
   }
 }
 

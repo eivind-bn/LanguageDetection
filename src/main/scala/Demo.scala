@@ -8,8 +8,6 @@ object Demo extends App {
   val path = "/home/eivind/Nedlastinger/dataset.csv"
   Language.loadFromFile(csvParser, path)
 
-  Russian.vocabulary.foreach(println)
-
   while(true){
     val input = readLine("Ready: ")
     Language.classifyLanguage(input)
