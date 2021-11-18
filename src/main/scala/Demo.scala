@@ -8,9 +8,9 @@ object Demo extends App {
   val path = "/home/eivind/Nedlastinger/dataset.csv"
   Language.loadFromFile(csvParser, path)
 
-  while(true){
-    val input = readLine("Ready: ")
-    Language.classifyLanguage(input)
-  }
+  while(true) Language
+    .classifyLanguage(readLine("Ready: "))
+    .printScoreOfAll()
+    .plotBarChart()
 }
 

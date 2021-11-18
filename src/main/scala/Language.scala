@@ -5,6 +5,7 @@
 import java.lang.Character.UnicodeBlock._
 import java.lang.Character.UnicodeScript.{HIRAGANA => Hiragana, KATAKANA => Katakana, _}
 import java.lang.Character.{UnicodeBlock, UnicodeScript}
+import scala.annotation.tailrec
 import scala.collection.mutable
 import scala.io.Source
 import scala.util.Using.Manager
@@ -30,11 +31,17 @@ sealed trait Language { lang:Product =>
 
   def loadTrainData(text: String): Seq[Word] = splitWords(text)
     .map(Word.parseTrain)
+    // Insert this word disregarding prior entries. All words sourced from dataset are immutable, and behave the same,
+    // so no if-checking required. If prior entry is sourced from normal input, desired behaviour is to invalidate it.
+    .tapEach(word => entries.update(word.text, word))
     .toSeq
 
-  def loadSampleData(text: String): Seq[Word] = splitWords(text)
-    .map(Word.parseSample)
-    .toSeq
+  def loadSampleData(text: String): Seq[Word] = splitWords(text) match {
+    // Inserts this instance if no equal entry exist. If it does, it could have been sampled from a dataset
+    // which claims higher priority. This instance should then relay method calls to that instance instead.
+    case text if text.exists(entries.contains) => text.map(text => entries.getOrElseUpdate(text, Word.parseSample(text))).toSeq
+    case _ => Seq.empty
+  }
 
   protected[this] def mayContain(chars: Char*): Boolean
   protected[this] def splitWords(text: String): Array[String] = text
@@ -48,7 +55,8 @@ sealed trait Language { lang:Product =>
   sealed trait Word extends CharSequence {
     val text: String
     def score: Double
-    def meanAdjust(totalScore: Double, numberOfWords: Int): Unit
+    protected[Language] def meanAdjust(totalScore: Double, numberOfWords: Int): Unit
+    def invalidate(): Unit = entries.remove(text)
     def language: Language = lang
     override def length(): Int = text.length
     override def charAt(index: Int): Char = text.charAt(index)
@@ -63,10 +71,7 @@ sealed trait Language { lang:Product =>
 
     def parseTrain(_text: String): Word = new Word {
       override val text: String = _text
-      // Insert this word disregarding prior entries. All words sourced from dataset are immutable, and behave the same,
-      // so no if-checking required. If prior entry is sourced from normal input, desired behaviour is to invalidate it.
-      entries.update(text, this)
-      override def meanAdjust(totalScore: Double, numberOfWords: Int): Unit = {/*NOOP*/}
+      override protected[Language] def meanAdjust(totalScore: Double, numberOfWords: Int): Unit = {/*NOOP*/}
       override def score: Double = 1.0
       override def toString: String = s"${lang.productPrefix}.Word($text)"
     }
@@ -77,20 +82,10 @@ sealed trait Language { lang:Product =>
       override def score: Double = _score
       def percent: Int = (score * 100).toInt
 
-      // Inserts this instance if no equal entry exist. If it does, it could have been sampled from a dataset
-      // which claims higher priority. This instance should then relay method calls to that instance instead.
-      private val entry: Word = entries.getOrElseUpdate(text, this)
+      override protected[Language] def meanAdjust(totalScore: Double, numberOfWords: Int): Unit =
+        if(numberOfWords > 6) _score = (_score + (totalScore / numberOfWords))/2
 
-      override def meanAdjust(totalScore: Double, numberOfWords: Int): Unit = entry match {
-        case _ if numberOfWords < 7 => //No adjusting occurs if sentences is too short.
-        case entry if entry eq this => _score = (_score + (totalScore / numberOfWords))/2
-        case entry => entry.meanAdjust(totalScore, numberOfWords)
-      }
-
-      override def toString: String = entry match {
-        case entry if entry eq this => s"${lang.productPrefix}.Word($text p=$percent%)"
-        case entry => entry.toString
-      }
+      override def toString: String = s"${lang.productPrefix}.Word($text p=$percent%)"
     }
   }
 }
@@ -130,13 +125,18 @@ object Language{
     (lang,text) = regex.group("language") -> regex.group("text")
   } Language.forName(lang).foreach(_.loadTrainData(text))
 
-  def classifyLanguage(sample: String): Unit = languages
-    .map(lang => (lang, lang.loadSampleData(sample))) // Parse input text
-    .map{ case (language, words) => (language, words, words.map(_.score).sum) } // Calculate score by language
-    .maxByOption{ case (language, words, score) => score } // Pick highest score
-    .tapEach{ case (language, words, score) => words.foreach(_.meanAdjust(score, words.length)) } // Adjust winner weights.
-    .map{ case (language, words, score) => s"$language: ${words.mkString("\t")}" } // Generate result.
-    .foreach(println) // Printing result. Will change in near commit.
+
+  def classifyLanguage(sample: String): ResultSet = {
+    val result = languages
+      .map(lang => (lang, lang.loadSampleData(sample))) // Parse input text
+      .map{ case (language, words) => Result(language, words.map(_.score).sum, words) } // Calculate score by language
+
+    result
+      .maxByOption(_.score) // Pick highest score
+      .foreach{ case Result(language, score, words) => words.foreach(_.meanAdjust(score, words.length)) } // Adjust winner weights.
+
+    new ResultSet(result)
+  }
 
   sealed abstract class Spanning(letters: Iterable[Char]*) extends Language { this:Product =>
     override def mayContain(chars: Char*): Boolean = chars
