@@ -7,7 +7,6 @@ import java.lang.Character.UnicodeScript.{HIRAGANA => Hiragana, KATAKANA => Kata
 import java.lang.Character.{UnicodeBlock, UnicodeScript}
 import scala.collection.mutable
 import scala.io.Source
-import scala.util.Try
 import scala.util.Using.Manager
 import scala.util.matching.Regex
 
@@ -25,8 +24,8 @@ sealed trait Language { lang:Product =>
   private val entries: mutable.HashMap[String,Word] = mutable.HashMap()
 
   //Returns the immutable word-set of this language. NOTE: The origin of particular word dictates whether they are
-  //mutable or not. Words from dataset are immutable. Words from untrusted data are mutable. This collection may
-  //be comprised of both, and side-effect inducing methods on words will be undefined.
+  //mutable or not. Words from datasets are immutable. Words from untrusted data are mutable. This collection may
+  //be comprised of both.
   def vocabulary: Set[Word] = entries.values.toSet
 
   def loadTrainData(text: String): Seq[Word] = splitWords(text)
@@ -48,9 +47,9 @@ sealed trait Language { lang:Product =>
 
   sealed trait Word extends CharSequence {
     val text: String
-
     def score: Double
     def meanAdjust(totalScore: Double, numberOfWords: Int): Unit
+    def language: Language = lang
     override def length(): Int = text.length
     override def charAt(index: Int): Char = text.charAt(index)
     override def subSequence(start: Int, end: Int): CharSequence = text.subSequence(start, end)
@@ -83,6 +82,7 @@ sealed trait Language { lang:Product =>
       private val entry: Word = entries.getOrElseUpdate(text, this)
 
       override def meanAdjust(totalScore: Double, numberOfWords: Int): Unit = entry match {
+        case _ if numberOfWords < 7 => //No adjusting occurs if sentences is too short.
         case entry if entry eq this => _score = (_score + (totalScore / numberOfWords))/2
         case entry => entry.meanAdjust(totalScore, numberOfWords)
       }
@@ -120,7 +120,9 @@ case object Urdu extends Language.Spanning(Language.Letters.urdu)
 
 object Language{
 
-  def dictionary: Map[String,Seq[Language#Word]] = languages.toSeq.flatMap(_.entries).groupMap(_._1)(_._2)
+  def dictionary: Map[Language,Seq[Language#Word]] = languages.toSeq
+    .flatMap(_.entries.values)
+    .groupMap(_.language)(word => word)
 
   def loadFromFile(regex: Regex, path: String): Unit = for{
     data <- Manager(manager => manager(Source.fromFile(path)).mkString)
