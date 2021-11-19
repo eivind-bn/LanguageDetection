@@ -1,6 +1,5 @@
 
 import scala.concurrent.duration.DurationInt
-import scala.io.Source
 import scala.io.StdIn.readLine
 import scala.util.matching.Regex
 
@@ -12,7 +11,7 @@ object Demo extends App {
 
   while(true) Language
     .classifyLanguage(readLine("Ready: "))
-    .printScoreOfAll()
-    .plotBarChart(timeout = 60.seconds)
+    .printScoreOfWinner()
+    .plotBarChart(timeout = 10.minutes)
 }
 

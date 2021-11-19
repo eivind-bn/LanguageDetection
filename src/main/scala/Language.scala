@@ -1,11 +1,7 @@
 
-
-
-
 import java.lang.Character.UnicodeBlock._
 import java.lang.Character.UnicodeScript.{HIRAGANA => Hiragana, KATAKANA => Katakana, _}
 import java.lang.Character.{UnicodeBlock, UnicodeScript}
-import scala.annotation.tailrec
 import scala.collection.mutable
 import scala.io.Source
 import scala.util.Using.Manager
@@ -24,10 +20,12 @@ sealed trait Language { lang:Product =>
   //Mutable object. Limit scope as much as possible.
   private val entries: mutable.HashMap[String,Word] = mutable.HashMap()
 
-  //Returns the immutable word-set of this language. NOTE: The origin of particular word dictates whether they are
-  //mutable or not. Words from datasets are immutable. Words from untrusted data are mutable. This collection may
-  //be comprised of both.
-  def vocabulary: Set[Word] = entries.values.toSet
+  /**
+   * Returns a immutable collection of every word contained in this language.
+   * Every word is also copied to an immutable instance to ensure the score is stable.
+   * @return Every word presently contained in this language.
+   */
+  def vocabulary: Set[Word] = entries.values.map(_.copy).toSet
 
   def loadTrainData(text: String): Seq[Word] = splitWords(text)
     .map(Word.parseTrain)

@@ -1,5 +1,3 @@
-import scala.collection.mutable
-import scala.collection.mutable.ListBuffer
 import scala.concurrent.duration.{DurationInt, FiniteDuration}
 
 case class Result(language: Language, score: Double, words: Seq[Language#Word])
@@ -8,6 +6,12 @@ class ResultSet(data: Iterable[Result]){
   def this(data: Seq[(Language, Double, Seq[Language#Word])]) =
     this(data.map{ case (language, score, word) => Result(language, score, word) })
 
+  /**
+   * Simply a convenience method levitating the necessity of writing 'this' as the last statement after performing
+   * stateful work.
+   * @param runnable The code to execute. For multi-statements, switch from brackets '()' to curly-brackets '{}'
+   * @return this instance.
+   */
   private def execute(runnable: Unit): this.type = this
 
   private def findWinner: Option[Result] = data
@@ -28,28 +32,14 @@ class ResultSet(data: Iterable[Result]){
   }
 
   def plotBarChart(timeout: FiniteDuration = 30.seconds): this.type = execute{
-    val l = data.map(_.words.length).maxOption.getOrElse(0)
 
-    val bars: ListBuffer[Array[Double]] = ListBuffer()
-    for(i <- 0 to l){
-      val arr = new Array[Double](22)
-      data.map(_.words.unapply(i).map(_.score).getOrElse(0.0)).zipWithIndex.foreach(g => arr.update(g._2, g._1))
-      bars.addOne(arr)
-    }
-    for(i <- 1 to l){
-      for{
-        a <- bars.unapply(i)
-        b <- bars.unapply(i + 1)
-      } b.zipWithIndex.foreach{ case (d, i) => b(i) = d + a(i) }
-    }
-
-    for(winner <- findWinner){
-      val process = new ProcessBuilder("python3", "-c", pythonBarChart)
-        .inheritIO()
-        .start()
-      process.waitFor(timeout.length, timeout.unit)
-      process.destroyForcibly()
-    }
+    val buffer = data.toIndexedSeq //Need to buffer collection due to multiple traversals.
+    val segmentCount = buffer.map(_.words.length).maxOption.getOrElse(0) //Find max word-count by each language. Bar-chart requires at least that many bars.
+    val bars = Seq.tabulate(22, segmentCount)((x,y) => buffer.unapply(x).flatMap(_.words.unapply(y)).map(_.score).getOrElse(0.0)) //Generate matrix. Rows length must match language count.
+      .map(_.scan(0.0)(_ + _)) // Succeeding bar segments must be stacked. Need to adjust score to be sum of current score plus preceding score.
+      .transpose // Because pyplot requires it.
+      .map(_.mkString("plt.barh(ind, [", ",", "], width, zorder=3)")) // Convert rows to python list surrounded by plt.barh call.
+      .reverse // Necessary to prevent segment overlapping.
 
     def pythonBarChart: String = {
       s"""
@@ -57,15 +47,12 @@ class ResultSet(data: Iterable[Result]){
          |import matplotlib.pyplot as plt
          |
          |
-         |ind = np.arange(${Language.languages.size})
-         |width = 0.5
+         |ind = np.arange(${data.size})
+         |width = 0.6
          |
-         |${bars.reverse
-        .map(_.mkString("[",",","]"))
-        .zipWithIndex
-        .map{ case (list, i) => (list, if(i % 2 == 0) "'white'" else "'lightgrey'") }
-        .map{ case (list, color) => s"plt.barh(ind, $list, width, color=$color, edgecolor='skyblue', zorder=3)" }
-        .mkString("\n")}
+         |fig = plt.figure("Language classification")
+         |
+         |${bars.mkString("\n")}
          |
          |plt.xlabel('Total score')
          |plt.title('Language classification')
@@ -74,7 +61,14 @@ class ResultSet(data: Iterable[Result]){
          |
          |plt.show()
          |""".stripMargin
+    }
 
+    for(_ <- findWinner){ //Run only if any winner
+      val process = new ProcessBuilder("python3", "-c", pythonBarChart)
+        .inheritIO()
+        .start()
+      process.waitFor(timeout.length, timeout.unit)
+      process.destroyForcibly()
     }
   }
 }
