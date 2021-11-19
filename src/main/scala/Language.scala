@@ -35,7 +35,7 @@ sealed trait Language { lang:Product =>
     .toSeq
 
   def loadTestData(text: String): Seq[Word] = splitWords(text) match {
-    // Insert samples only if at least one word exist in entries already.
+    // Insert testdata in this language only if at least one word exist in it already.
     case text if text.exists(entries.contains) => text.map(text => entries.getOrElseUpdate(text, Word.parseTest(text))).toSeq
     case _ => Seq.empty
   }
@@ -49,7 +49,7 @@ sealed trait Language { lang:Product =>
     .filter(word => word.length > 1 && mayContain(word.toSeq:_*))
 
 
-  sealed trait Word extends CharSequence {
+  sealed trait Word extends CharSequence { self =>
     val text: String
     def score: Double
     def invalidate(): Unit = entries.remove(text)
@@ -58,6 +58,12 @@ sealed trait Language { lang:Product =>
     override def length(): Int = text.length
     override def charAt(index: Int): Char = text.charAt(index)
     override def subSequence(start: Int, end: Int): CharSequence = text.subSequence(start, end)
+    //Returns a safe immutable copy of this object with score eagerly computed.
+    def copy: Word = new Word {
+      override val text: String = text
+      override val score: Double = self.score
+      override protected[Language] def meanAdjust(totalScore: Double, numberOfWords: Int): Unit = {/*NOOP*/}
+    }
     override def equals(obj: Any): Boolean = obj match {
       case other: Word => this.text.equalsIgnoreCase(other.text)
       case other: String => this.text.equalsIgnoreCase(other)
@@ -116,21 +122,25 @@ object Language{
     .flatMap(_.entries.values)
     .groupMap(_.language)(word => word)
 
-  def loadFromFile(regex: Regex, path: String): Unit = for{
-    data <- Manager(manager => manager(Source.fromFile(path)).mkString)
+  def loadFromResource(regex: Regex, name: String): Unit = for{
+    data <- Manager(manager => manager(Source.fromResource(name)).mkString)
     regex <- regex.findAllMatchIn(data)
     (lang,text) = regex.group("language") -> regex.group("text")
   } Language.forName(lang).foreach(_.loadTrainData(text))
 
 
   def classifyLanguage(sample: String): ResultSet = {
-    val result = languages
+    val temp = languages
       .map(lang => (lang, lang.loadTestData(sample))) // Parse input text
-      .map{ case (language, words) => Result(language, words.map(_.score).sum, words) } // Calculate score by language
+      .map{ case (language, words) => (language, words.map(_.score).sum, words) } // Calculate score by language
 
-    result
-      .maxByOption(_.score) // Pick highest score
-      .foreach{ case Result(language, score, words) => words.foreach(_.meanAdjust(score, words.length)) } // Adjust winner weights.
+    val result = temp
+      .map{ case (language, score, words) => (language, score, words.map(_.copy)) } // Make immutable copies to save current score.
+      .toSeq
+
+    temp
+      .maxByOption{ case (language, score, words) => score } // Pick highest score
+      .foreach{ case (language, score, words) => words.foreach(_.meanAdjust(score, words.length)) } // Adjust winner weights.
 
     new ResultSet(result)
   }

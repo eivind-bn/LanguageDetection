@@ -1,3 +1,5 @@
+import scala.collection.mutable
+import scala.collection.mutable.ListBuffer
 import scala.concurrent.duration.{DurationInt, FiniteDuration}
 
 case class Result(language: Language, score: Double, words: Seq[Language#Word])
@@ -26,12 +28,27 @@ class ResultSet(data: Iterable[Result]){
   }
 
   def plotBarChart(timeout: FiniteDuration = 30.seconds): this.type = execute{
+    val l = data.map(_.words.length).maxOption.getOrElse(0)
+
+    val bars: ListBuffer[Array[Double]] = ListBuffer()
+    for(i <- 0 to l){
+      val arr = new Array[Double](22)
+      data.map(_.words.unapply(i).map(_.score).getOrElse(0.0)).zipWithIndex.foreach(g => arr.update(g._2, g._1))
+      bars.addOne(arr)
+    }
+    for(i <- 1 to l){
+      for{
+        a <- bars.unapply(i)
+        b <- bars.unapply(i + 1)
+      } b.zipWithIndex.foreach{ case (d, i) => b(i) = d + a(i) }
+    }
+
     for(winner <- findWinner){
       val process = new ProcessBuilder("python3", "-c", pythonBarChart)
         .inheritIO()
         .start()
-//      process.waitFor(timeout.length, timeout.unit)
-//      process.destroyForcibly()
+      process.waitFor(timeout.length, timeout.unit)
+      process.destroyForcibly()
     }
 
     def pythonBarChart: String = {
@@ -40,22 +57,20 @@ class ResultSet(data: Iterable[Result]){
          |import matplotlib.pyplot as plt
          |
          |
-         |N = 5
-         |menMeans = [60, 35, 30, 35, 27]
-         |womenMeans = [110, 32, 34, 20, 25]
-         |menStd = [2, 3, 4, 1, 2]
-         |womenStd = [3, 5, 2, 3, 3]
-         |ind = np.arange(N)    # the x locations for the groups
-         |width = 0.35       # the width of the bars: can also be len(x) sequence
+         |ind = np.arange(${Language.languages.size})
+         |width = 0.5
          |
-         |p1 = plt.bar(ind, menMeans, width, yerr=menStd)
-         |p2 = plt.bar(ind, womenMeans, width, bottom=menMeans, yerr=womenStd)
-         |p3 = plt.bar(ind, womenMeans, width, bottom=menMeans, yerr=womenStd)
+         |${bars.reverse
+        .map(_.mkString("[",",","]"))
+        .zipWithIndex
+        .map{ case (list, i) => (list, if(i % 2 == 0) "'white'" else "'lightgrey'") }
+        .map{ case (list, color) => s"plt.barh(ind, $list, width, color=$color, edgecolor='skyblue', zorder=3)" }
+        .mkString("\n")}
          |
-         |plt.ylabel('Scores')
+         |plt.xlabel('Total score')
          |plt.title('Language classification')
-         |plt.xticks(ind, ['Thai', 'G2', 'G3', 'G4', 'G5'])
-         |plt.legend(['Men', 'Women'])
+         |plt.yticks(ind, ${data.map(result => s"'${result.language}'").mkString("[", ",", "]")})
+         |plt.grid(True, linestyle = "dashed", zorder=0)
          |
          |plt.show()
          |""".stripMargin
