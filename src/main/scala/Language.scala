@@ -44,7 +44,7 @@ sealed trait Language { lang:Product =>
     .toLowerCase
     .filter(char => char.isLetter || char.isWhitespace || char == '\'')
     .split("[\\s-]+")
-    .filter(word => word.length > 1 && mayContain(word.toSeq:_*))
+    .filter(word => mayContain(word.toSeq:_*))
 
 
   sealed trait Word extends CharSequence { self =>
