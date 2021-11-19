@@ -6,8 +6,8 @@ import scala.util.matching.Regex
 object Demo extends App {
 
   val csvParser: Regex = "(?<text>[\\S\\s]+?),(?<language>\\w+)".r
-  val path = "dataset.csv"
-  Language.loadFromResource(csvParser, path)
+  val resource = "dataset.csv"
+  Language.loadFromResource(csvParser, resource)
 
   while(true) Language
     .classifyLanguage(readLine("Ready: "))
