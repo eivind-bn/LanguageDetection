@@ -31,15 +31,12 @@ sealed trait Language { lang:Product =>
 
   def loadTrainData(text: String): Seq[Word] = splitWords(text)
     .map(Word.parseTrain)
-    // Insert this word disregarding prior entries. All words sourced from dataset are immutable, and behave the same,
-    // so no if-checking required. If prior entry is sourced from normal input, desired behaviour is to invalidate it.
     .tapEach(word => entries.update(word.text, word))
     .toSeq
 
-  def loadSampleData(text: String): Seq[Word] = splitWords(text) match {
-    // Inserts this instance if no equal entry exist. If it does, it could have been sampled from a dataset
-    // which claims higher priority. This instance should then relay method calls to that instance instead.
-    case text if text.exists(entries.contains) => text.map(text => entries.getOrElseUpdate(text, Word.parseSample(text))).toSeq
+  def loadTestData(text: String): Seq[Word] = splitWords(text) match {
+    // Insert samples only if at least one word exist in entries already.
+    case text if text.exists(entries.contains) => text.map(text => entries.getOrElseUpdate(text, Word.parseTest(text))).toSeq
     case _ => Seq.empty
   }
 
@@ -55,9 +52,9 @@ sealed trait Language { lang:Product =>
   sealed trait Word extends CharSequence {
     val text: String
     def score: Double
-    protected[Language] def meanAdjust(totalScore: Double, numberOfWords: Int): Unit
     def invalidate(): Unit = entries.remove(text)
     def language: Language = lang
+    protected[Language] def meanAdjust(totalScore: Double, numberOfWords: Int): Unit
     override def length(): Int = text.length
     override def charAt(index: Int): Char = text.charAt(index)
     override def subSequence(start: Int, end: Int): CharSequence = text.subSequence(start, end)
@@ -76,7 +73,7 @@ sealed trait Language { lang:Product =>
       override def toString: String = s"${lang.productPrefix}.Word($text)"
     }
 
-    def parseSample(_text: String): Word = new Word {
+    def parseTest(_text: String): Word = new Word {
       override val text: String = _text
       var _score: Double = entries.get(text).map(_.score).getOrElse(0.0)
       override def score: Double = _score
@@ -128,7 +125,7 @@ object Language{
 
   def classifyLanguage(sample: String): ResultSet = {
     val result = languages
-      .map(lang => (lang, lang.loadSampleData(sample))) // Parse input text
+      .map(lang => (lang, lang.loadTestData(sample))) // Parse input text
       .map{ case (language, words) => Result(language, words.map(_.score).sum, words) } // Calculate score by language
 
     result
