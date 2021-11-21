@@ -1,12 +1,10 @@
 
-
-
-
 import java.lang.Character.UnicodeBlock._
 import java.lang.Character.UnicodeScript.{HIRAGANA => Hiragana, KATAKANA => Katakana, _}
 import java.lang.Character.{UnicodeBlock, UnicodeScript}
 import scala.collection.mutable
 import scala.io.Source
+import scala.util.Random
 import scala.util.Using.Manager
 import scala.util.matching.Regex
 
@@ -23,18 +21,23 @@ sealed trait Language { lang:Product =>
   //Mutable object. Limit scope as much as possible.
   private val entries: mutable.HashMap[String,Word] = mutable.HashMap()
 
-  //Returns the immutable word-set of this language. NOTE: The origin of particular word dictates whether they are
-  //mutable or not. Words from datasets are immutable. Words from untrusted data are mutable. This collection may
-  //be comprised of both.
-  def vocabulary: Set[Word] = entries.values.toSet
+  /**
+   * Returns a immutable collection of every word contained in this language.
+   * Every word is also copied to an immutable instance to ensure the score is stable.
+   * @return Every word presently contained in this language.
+   */
+  def vocabulary: Set[Word] = entries.values.map(_.copy).toSet
 
   def loadTrainData(text: String): Seq[Word] = splitWords(text)
     .map(Word.parseTrain)
+    .tapEach(word => entries.update(word.text, word))
     .toSeq
 
-  def loadSampleData(text: String): Seq[Word] = splitWords(text)
-    .map(Word.parseSample)
-    .toSeq
+  private[Language] def loadTestData(text: String): Seq[Word] = splitWords(text) match {
+    // Insert testdata in this language only if at least one word exist in it already.
+    case text if text.exists(entries.contains) => text.map(text => entries.getOrElseUpdate(text, Word.parseTest(text))).toSeq
+    case _ => Seq.empty
+  }
 
   protected[this] def mayContain(chars: Char*): Boolean
   protected[this] def splitWords(text: String): Array[String] = text
@@ -42,17 +45,24 @@ sealed trait Language { lang:Product =>
     .toLowerCase
     .filter(char => char.isLetter || char.isWhitespace || char == '\'')
     .split("[\\s-]+")
-    .filter(word => word.length > 1 && mayContain(word.toSeq:_*))
+    .filter(word => word.nonEmpty && mayContain(word.toSeq:_*))
 
 
-  sealed trait Word extends CharSequence {
+  sealed trait Word extends CharSequence { self =>
     val text: String
     def score: Double
-    def meanAdjust(totalScore: Double, numberOfWords: Int): Unit
+    def invalidate(): Unit = entries.remove(text)
     def language: Language = lang
+    protected[Language] def meanAdjust(totalScore: Double, numberOfWords: Int): Unit
     override def length(): Int = text.length
     override def charAt(index: Int): Char = text.charAt(index)
     override def subSequence(start: Int, end: Int): CharSequence = text.subSequence(start, end)
+    //Returns a safe immutable copy of this object with score eagerly computed.
+    def copy: Word = new Word {
+      override val text: String = self.text
+      override val score: Double = self.score
+      override protected[Language] def meanAdjust(totalScore: Double, numberOfWords: Int): Unit = {/*NOOP*/}
+    }
     override def equals(obj: Any): Boolean = obj match {
       case other: Word => this.text.equalsIgnoreCase(other.text)
       case other: String => this.text.equalsIgnoreCase(other)
@@ -63,34 +73,21 @@ sealed trait Language { lang:Product =>
 
     def parseTrain(_text: String): Word = new Word {
       override val text: String = _text
-      // Insert this word disregarding prior entries. All words sourced from dataset are immutable, and behave the same,
-      // so no if-checking required. If prior entry is sourced from normal input, desired behaviour is to invalidate it.
-      entries.update(text, this)
-      override def meanAdjust(totalScore: Double, numberOfWords: Int): Unit = {/*NOOP*/}
+      override protected[Language] def meanAdjust(totalScore: Double, numberOfWords: Int): Unit = {/*NOOP*/}
       override def score: Double = 1.0
       override def toString: String = s"${lang.productPrefix}.Word($text)"
     }
 
-    def parseSample(_text: String): Word = new Word {
+    def parseTest(_text: String, adjustThreshold: Int = 6): Word = new Word {
       override val text: String = _text
       var _score: Double = entries.get(text).map(_.score).getOrElse(0.0)
       override def score: Double = _score
       def percent: Int = (score * 100).toInt
 
-      // Inserts this instance if no equal entry exist. If it does, it could have been sampled from a dataset
-      // which claims higher priority. This instance should then relay method calls to that instance instead.
-      private val entry: Word = entries.getOrElseUpdate(text, this)
+      override protected[Language] def meanAdjust(totalScore: Double, numberOfWords: Int): Unit =
+        if(numberOfWords > adjustThreshold) _score = (_score + (totalScore / numberOfWords))/2
 
-      override def meanAdjust(totalScore: Double, numberOfWords: Int): Unit = entry match {
-        case _ if numberOfWords < 7 => //No adjusting occurs if sentences is too short.
-        case entry if entry eq this => _score = (_score + (totalScore / numberOfWords))/2
-        case entry => entry.meanAdjust(totalScore, numberOfWords)
-      }
-
-      override def toString: String = entry match {
-        case entry if entry eq this => s"${lang.productPrefix}.Word($text p=$percent%)"
-        case entry => entry.toString
-      }
+      override def toString: String = s"${lang.productPrefix}.Word($text p=$percent%)"
     }
   }
 }
@@ -124,19 +121,50 @@ object Language{
     .flatMap(_.entries.values)
     .groupMap(_.language)(word => word)
 
-  def loadFromFile(regex: Regex, path: String): Unit = for{
-    data <- Manager(manager => manager(Source.fromFile(path)).mkString)
+  private def readData(regex: Regex, name: String): Seq[(Language, String)] = for{
+    data <- Manager(manager => manager(Source.fromResource(name)).mkString).toOption.toSeq
     regex <- regex.findAllMatchIn(data)
-    (lang,text) = regex.group("language") -> regex.group("text")
-  } Language.forName(lang).foreach(_.loadTrainData(text))
+    (lang,text) = Language.forName(regex.group("language")) -> regex.group("text")
+    result <- lang.zip(Some(text))
+  } yield result
 
-  def classifyLanguage(sample: String): Unit = languages
-    .map(lang => (lang, lang.loadSampleData(sample))) // Parse input text
-    .map{ case (language, words) => (language, words, words.map(_.score).sum) } // Calculate score by language
-    .maxByOption{ case (language, words, score) => score } // Pick highest score
-    .tapEach{ case (language, words, score) => words.foreach(_.meanAdjust(score, words.length)) } // Adjust winner weights.
-    .map{ case (language, words, score) => s"$language: ${words.mkString("\t")}" } // Generate result.
-    .foreach(println) // Printing result. Will change in near commit.
+  def loadFromResource(regex: Regex, name: String): Unit = readData(regex, name)
+    .foreach{ case (language, text) => language.loadTrainData(text) }
+
+  /**
+   * Loads dataset from resources. Then proceeds to train the model according to the validation-policy.
+   * The data is always shuffled before it's forwarded to the model. The results between each run may vary,
+   * but ratio of right/wrong guesses should remain fairly stable at roughly 12%.
+   * @param regex csvParser to read the data.
+   * @param name name of the file.
+   * @param validationRatio A double in the range <0,1>. This percent-factor determines how much of
+   *                        the dataset is strip out to be used for validation instead.
+   * @return Validation result. Allows further examining of the data.
+   */
+
+  def loadFromResource(regex: Regex, name: String, validationRatio: Double): ValidationResult =
+    Random.shuffle(readData(regex, name)) match {
+    case data =>
+      val (prefix, suffix) = data.splitAt((data.length * validationRatio).toInt)
+      suffix.foreach{ case (language, text) => language.loadTrainData(text) }
+      new ValidationResult(prefix.map{ case (language, text) => (language, classifyLanguage(text)) })
+  }
+
+  def classifyLanguage(sample: String): TestResult = {
+    val temp = languages
+      .map(lang => (lang, lang.loadTestData(sample))) // Parse input text
+      .map{ case (language, words) => (language, words.map(_.score).sum, words) } // Calculate score by language
+
+    val result = temp
+      .map{ case (language, score, words) => (language, words.map(_.copy)) } // Make immutable copies to save current score.
+      .toSeq
+
+    temp
+      .maxByOption{ case (language, score, words) => score } // Pick highest score
+      .foreach{ case (language, score, words) => words.foreach(_.meanAdjust(score, words.length)) } // Adjust winner weights.
+
+    new TestResult(result)
+  }
 
   sealed abstract class Spanning(letters: Iterable[Char]*) extends Language { this:Product =>
     override def mayContain(chars: Char*): Boolean = chars
