@@ -70,9 +70,9 @@ class TestResult(data: Seq[(Language, Seq[Language#Word])]){
          |""".stripMargin
     }
 
-    def runPython: Try[Process] = Try(new ProcessBuilder("python3", "-c", pythonBarChart).inheritIO().start())
+    def runPython(): Try[Process] = Try(new ProcessBuilder("python3", "-c", pythonBarChart).inheritIO().start())
 
-    if(findWinner.isDefined) runPython match {
+    if(findWinner.isDefined) runPython() match {
       case Failure(_: IOException) => println(Console.RED + "Error: Could not visualize result. " +
         "Required dependencies is python3, numpy, and matplotlib\nFalling back to textual results..." + Console.RESET)
       printScoreOfAll()

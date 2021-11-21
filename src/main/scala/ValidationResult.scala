@@ -28,9 +28,6 @@ class ValidationResult(data: Seq[(Language, TestResult)]) {
 
   def validationBarChart(timeout: FiniteDuration): this.type = execute{
 
-    val buffer = observations.toIndexedSeq //Need to buffer collection due to multiple traversals.
-
-
     val truePositive = observations
       .filter(_.isCorrect)
       .flatMap(_.testResult.findWinner)
@@ -70,7 +67,9 @@ class ValidationResult(data: Seq[(Language, TestResult)]) {
          |""".stripMargin
     }
 
-    if(observations.nonEmpty) Try(new ProcessBuilder("python3", "-c", pythonBarChart).inheritIO().start()) match {
+    def runPython(): Try[Process] = Try(new ProcessBuilder("python3", "-c", pythonBarChart).inheritIO().start())
+
+    if(observations.nonEmpty) runPython() match {
       case Failure(_: IOException) => println(Console.RED + "Error: Could not visualize validation. " +
         "Ensure python3, numpy, and matplotlib is installed." + Console.RESET)
 

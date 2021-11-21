@@ -33,7 +33,7 @@ sealed trait Language { lang:Product =>
     .tapEach(word => entries.update(word.text, word))
     .toSeq
 
-  def loadTestData(text: String): Seq[Word] = splitWords(text) match {
+  private[Language] def loadTestData(text: String): Seq[Word] = splitWords(text) match {
     // Insert testdata in this language only if at least one word exist in it already.
     case text if text.exists(entries.contains) => text.map(text => entries.getOrElseUpdate(text, Word.parseTest(text))).toSeq
     case _ => Seq.empty
