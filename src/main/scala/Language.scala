@@ -9,29 +9,53 @@ import scala.util.Using.Manager
 import scala.util.matching.Regex
 
 /**
- * All languages are statically known. The machine cannot model new languages, only deduce origin of words
- * in existing ones. Words on the other hand is not statically known. New words can be deduced by context,
- * i.e. being surrounded by existing ones from known languages. Weights associated with heuristic words should
- * also change as the model progresses.
+ * All languages are statically known. New languages cannot be deduced by machine-learning, but only words.
  *
+ * For a language to be incorporated in the detection-model, it must be a subtype of this trait.
+ * This ensures all declared languages contain their own vocabulary, and are able to grow dynamically.
+ * This model has the capability of continuous learning, which inherently requires mutation.
+ * To cope with mutation in the safest manner, all methods which causes side-effects should be declared in
+ * the scope of this superclass.
  */
 
 sealed trait Language { lang:Product =>
 
   //Mutable object. Limit scope as much as possible.
-  private val entries: mutable.HashMap[String,Word] = mutable.HashMap()
+  private[this] val entries: mutable.HashMap[String,Word] = mutable.HashMap()
 
   /**
    * Returns a immutable collection of every word contained in this language.
    * Every word is also copied to an immutable instance to ensure the score is stable.
+   *
    * @return Every word presently contained in this language.
    */
   def vocabulary: Set[Word] = entries.values.map(_.copy).toSet
+
+  /**
+   * Assumes data is 100% correct with respect to this language, and inserts immutable instances of words into
+   * its vocabulary. Since data is assumed correct, and instances are immutable, weights associated with
+   * this words will never change.
+   *
+   * @param text Can be a string of arbitrary number of words.
+   *             The string is split into words, and each respective word is inserted into the vocabulary if
+   *             they satisfy this language letter encoding. Non-letter are simply ignored.
+   * @return The inserted words.
+   */
 
   def loadTrainData(text: String): Seq[Word] = splitWords(text)
     .map(Word.parseTrain)
     .tapEach(word => entries.update(word.text, word))
     .toSeq
+
+  /**
+   * Loads words into this language if at least one word exist already. These words are mutable instances
+   * with adjustable weights. Weights are always initially 0, but may be adjusted after creation.
+   *
+   * @param text Can be a string of arbitrary number of words.
+   *             The string is split into words, and each respective word is inserted into the vocabulary if
+   *             they satisfy this language letter encoding. Non-letter are simply ignored.
+   * @return The words already present in vocabulary, and the newly discovered ones if any.
+   */
 
   private[Language] def loadTestData(text: String): Seq[Word] = splitWords(text) match {
     // Insert testdata in this language only if at least one word exist in it already.
@@ -39,7 +63,25 @@ sealed trait Language { lang:Product =>
     case _ => Seq.empty
   }
 
+  /**
+   * Different languages have different letter encodings. This method should return true i all chars are valid
+   * in this particular language, or else false.
+   *
+   * @param chars The codepoints to validate.
+   * @return True if ALL valid, or else false.
+   */
+
   protected[this] def mayContain(chars: Char*): Boolean
+
+  /**
+   * Splits a string of arbitrary words into its respective words. Every invalid codepoint should also be filtered out.
+   * This method defaults to splitting word by whitespace or dashes. Any language which distinguish word by
+   * other policies need to override this method.
+   *
+   * @param text text of arbitrary word length to split.
+   * @return Every legal word for this language.
+   */
+
   protected[this] def splitWords(text: String): Array[String] = text
     .strip()
     .toLowerCase
@@ -47,21 +89,64 @@ sealed trait Language { lang:Product =>
     .split("[\\s-]+")
     .filter(word => word.nonEmpty && mayContain(word.toSeq:_*))
 
+  /**
+   * Trait for every word of this instance. May or may not be mutable.
+   */
 
   sealed trait Word extends CharSequence { self =>
+
+    /**
+     * Unwrapped version of this word.
+     */
+
     val text: String
+
+    /**
+     * The current score, i.e. weight of this word. The number must be in the range: 0.0 <= w <= 1.0
+     *
+     * @return The current score.
+     */
+
     def score: Double
-    def invalidate(): Unit = entries.remove(text)
+
+    /**
+     * Discards this word from its language.
+     */
+
+    private[Language] def invalidate(): Unit = entries.remove(text)
+
+    /**
+     * Returns the outer instance of this particular word.
+     *
+     * @return The language that owns this instance.
+     */
+
     def language: Language = lang
+
+    /**
+     * May or may not actually mutate the word depending on the subtype definition. If this word is desired
+     * as immutable, then the subtype may simply override this method without any statements (NOOP).
+     *
+     * @param totalScore The accounted sum of weights before adjustment has begun.
+     * @param numberOfWords Number of words accounted for.
+     */
+
     protected[Language] def meanAdjust(totalScore: Double, numberOfWords: Int): Unit
     override def length(): Int = text.length
     override def charAt(index: Int): Char = text.charAt(index)
     override def subSequence(start: Int, end: Int): CharSequence = text.subSequence(start, end)
-    //Returns a safe immutable copy of this object with score eagerly computed.
+
+    /**
+     * Returns a safe immutable copy of this object with score eagerly computed. This is necessary if
+     * score is too be preserved for statistical analysis.
+     * @return A anonymous instance with stable and eagerly computed attributes.
+     */
+
     def copy: Word = new Word {
       override val text: String = self.text
       override val score: Double = self.score
       override protected[Language] def meanAdjust(totalScore: Double, numberOfWords: Int): Unit = {/*NOOP*/}
+
     }
     override def equals(obj: Any): Boolean = obj match {
       case other: Word => this.text.equalsIgnoreCase(other.text)
@@ -71,6 +156,13 @@ sealed trait Language { lang:Product =>
   }
   private[this] object Word{
 
+    /**
+     * Produces a anonymous word instance with immutable fields. Weight of this word is always 1.0 (the max-value),
+     * and will never be influenced may adjustments.
+     * @param _text The properly formatted textual representation of this word (assumed to be correct).
+     * @return The new word.
+     */
+
     def parseTrain(_text: String): Word = new Word {
       override val text: String = _text
       override protected[Language] def meanAdjust(totalScore: Double, numberOfWords: Int): Unit = {/*NOOP*/}
@@ -78,11 +170,87 @@ sealed trait Language { lang:Product =>
       override def toString: String = s"${lang.productPrefix}.Word($text)"
     }
 
+    /**
+     * Produces a anonymous word instance with mutable fields. Weight of this word is initially the same
+     * as other equal entries if any, or else 0.0 (the min-value).
+     *
+     * @param _text The properly formatted textual representation of this word (assumed to be correct).
+     * @param adjustThreshold Threshold to surpass if weight adjustments is allowed to occur.
+     *                        This threshold corresponds to amount of words present when classifying.
+     *                        The default threshold is 6 words. Sentences below 6 words may yield unstable
+     *                        classifications.
+     * @return The new word.
+     */
+
     def parseTest(_text: String, adjustThreshold: Int = 6): Word = new Word {
       override val text: String = _text
-      var _score: Double = entries.get(text).map(_.score).getOrElse(0.0)
+
+      /**
+       * Current weight state of this word.
+       */
+
+      private[this] var _score: Double = entries.get(text).map(_.score).getOrElse(0.0)
       override def score: Double = _score
+
+      /**
+       * Yields score represented in percent. Note that this number is just a weight, not actually the
+       * probability of being a authentic word. The machine cannot predict this.
+       *
+       * @return The weight in percent.
+       */
+
       def percent: Int = (score * 100).toInt
+
+      /**
+       *
+       * Method which performs the actual weight adjustment. For adjustment to happen, the minimum-word
+       * threshold of this word must be surpassed. The math:
+       *
+       * 1. Calculate the average weight of all words.
+       * 2. Calculate average of previously mentioned average, and the current weight in this word.
+       *
+       * Step 1 ensures the new score considers the whole sentence.
+       * Step 2 ensures the new score is not applied in too strong magnitude too fast.
+       *
+       * For illustrative purposes, say the model encounters these 2 words:
+       *
+       * English.Word("hello", w=0.25), English.Word("world", w=0.75)
+       *
+       * Model has concluded the sample is english. Now it needs to make weight adjustments.
+       *
+       * After ----> English.Word("hello", w=0.375), English.Word("world", w=0.625)
+       *
+       * The idea is that the model is uncertain that English.Word("hello", w=0.25) is actually english.
+       * However, it's more more certain that English.Word("world", w=0.75) is english judging by the current weight.
+       * After adjustment, the model gained confidence that English.Word("hello", w=0.375) is english,
+       * But lost some confidence in English.Word("world", w=0.625). After infinitely many iterations, the score will
+       * converge at the midpoint.
+       *
+       * 0. English.Word("hello", w=0.25), English.Word("world", w=0.75)
+       * 1. English.Word("hello", w=0.375), English.Word("world", w=0.625)
+       * 2. English.Word("hello", w=0.4375), English.Word("world", w=0.5625)
+       * 3. English.Word("hello", w=0.46875), English.Word("world", w=0.53125)
+       * 4. English.Word("hello", w=0.484375), English.Word("world", w=0.51576)
+       *
+       *
+       * Now lets illustrate the same, but let 1 word be the immutable counterpart.
+       *
+       * 0. English.Word("hello", w=0.25), English.ImmutableWord("world", w=1.00)
+       * 1. English.Word("hello", w=0.4375), English.ImmutableWord("world", w=1.00)
+       * 2. English.Word("hello", w=0.578125), English.ImmutableWord("world", w=1.00)
+       * 3. English.Word("hello", w=0.68359), English.ImmutableWord("world", w=1.00)
+       * 4. English.Word("hello", w=0.76269), English.ImmutableWord("world", w=1.00)
+       *
+       * In this scenario the model encountered a train-data word which can be though of as an axiom.
+       * The model became more and more confident that English.Word("hello", w=0.25) is english,
+       * whilst loosing no confidence in English.ImmutableWord("world", w=1.00) since it's sourced from the
+       * train-data and therefore must be correct. After infinitely many iteration, the model will
+       * have 100% confidence in "hello" as well.
+       *
+       *
+       * @param totalScore The accounted sum of weights before adjustment has begun.
+       * @param numberOfWords Number of words accounted for.
+       */
 
       override protected[Language] def meanAdjust(totalScore: Double, numberOfWords: Int): Unit =
         if(numberOfWords > adjustThreshold) _score = (_score + (totalScore / numberOfWords))/2
@@ -118,7 +286,7 @@ case object Urdu extends Language.Spanning(Language.Letters.urdu)
 object Language{
 
   def dictionary: Map[Language,Seq[Language#Word]] = languages.toSeq
-    .flatMap(_.entries.values)
+    .flatMap(_.vocabulary)
     .groupMap(_.language)(word => word)
 
   private def readData(regex: Regex, name: String): Seq[(Language, String)] = for{
