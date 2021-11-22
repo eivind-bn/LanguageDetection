@@ -12,7 +12,7 @@ class ValidationResult(data: Seq[(Language, TestResult)]) {
   val observations: Seq[Observation] = data
     .map{ case (language, result) => Observation(language, result) }
 
-  def execute(runnable: Unit): this.type = this
+  private def execute(runnable: Unit): this.type = this
 
   def printValidationSummary(): this.type = execute{
     val (rights, wrongs) = observations.partition(_.isCorrect)
