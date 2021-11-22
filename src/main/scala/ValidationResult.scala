@@ -1,18 +1,49 @@
 import java.io.IOException
+import java.util.{Timer, TimerTask}
 import scala.concurrent.duration.FiniteDuration
 import scala.util.{Failure, Success, Try}
+
+/**
+ * Class used to analyse results of validations
+ * @param data Necessary data derived from classification.
+ */
 
 class ValidationResult(data: Seq[(Language, TestResult)]) {
 
   case class Observation(correctLanguage: Language, testResult: TestResult){
+
+    /**
+     * Tests if classification is correct.
+     * @return True if correct.
+     */
+
     def isCorrect: Boolean = testResult.findWinner.forall(_.language == correctLanguage)
+
+    /**
+     * Tests if classification is incorrect.
+     * @return False if correct.
+     */
+
     def isIncorrect: Boolean = !isCorrect
   }
 
   val observations: Seq[Observation] = data
     .map{ case (language, result) => Observation(language, result) }
 
+  /**
+   * Simply a convenience method levitating the necessity of writing 'this' as the last statement after performing
+   * stateful work.
+   *
+   * @param runnable The code to execute. For multi-statements, switch from brackets '()' to curly-brackets '{}'
+   * @return this instance.
+   */
+
   private def execute(runnable: Unit): this.type = this
+
+  /**
+   * Prints short summary of validation.
+   * @return This instance.
+   */
 
   def printValidationSummary(): this.type = execute{
     val (rights, wrongs) = observations.partition(_.isCorrect)
@@ -25,6 +56,13 @@ class ValidationResult(data: Seq[(Language, TestResult)]) {
          |""".stripMargin
     )
   }
+
+  /**
+   * Plots python bar-chart visualizing the data of this validation-result.
+   * The y-axis is languages, and the x-axis is the number of right and wrong guesses.
+   * @param timeout Time until plot is forced closed.
+   * @return this instance.
+   */
 
   def validationBarChart(timeout: FiniteDuration): this.type = execute{
 
@@ -76,9 +114,8 @@ class ValidationResult(data: Seq[(Language, TestResult)]) {
       case Failure(exception) => throw exception
 
       case Success(process) =>
-        process.waitFor(timeout.length, timeout.unit)
-        process.destroyForcibly()
-
+        val forceCloser = new Timer()
+        forceCloser.schedule(new TimerTask { override def run(): Unit = process.destroyForcibly() }, timeout.toMillis)
     }
   }
 }

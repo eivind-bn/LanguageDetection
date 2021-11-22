@@ -1,7 +1,12 @@
 import java.io.IOException
+import java.util.{Timer, TimerTask}
 import scala.concurrent.duration.{DurationInt, FiniteDuration}
 import scala.util.{Failure, Success, Try}
 
+/**
+ * Class used to analyse results of classifications.
+ * @param data Necessary data derived from classification.
+ */
 
 class TestResult(data: Seq[(Language, Seq[Language#Word])]){
 
@@ -15,14 +20,26 @@ class TestResult(data: Seq[(Language, Seq[Language#Word])]){
   /**
    * Simply a convenience method levitating the necessity of writing 'this' as the last statement after performing
    * stateful work.
+   *
    * @param runnable The code to execute. For multi-statements, switch from brackets '()' to curly-brackets '{}'
    * @return this instance.
    */
+
   protected def execute(runnable: Unit): this.type = this
+
+  /**
+   * Finds the winner of this test-result.
+   * @return The winner if any.
+   */
 
   def findWinner: Option[Observation] = observations
     .maxByOption(_.score)
     .filter(_.score > 0.0001)
+
+  /**
+   * Prints winner with score.
+   * @return This instance.
+   */
 
   def printScoreOfWinner(): this.type = execute{
     for(winner <- findWinner){
@@ -30,12 +47,27 @@ class TestResult(data: Seq[(Language, Seq[Language#Word])]){
     }
   }
 
+  /**
+   * Prints score of all contenders in descending order.
+   * @return This instance.
+   */
+
   def printScoreOfAll(): this.type = execute{
     val contenders = observations.sortBy(-_.score)
     for(contender <- contenders){
       println(s"${contender.language}: ${contender.score}")
     }
   }
+
+  /**
+   * Plots python bar-chart visualizing the data of this test-result.
+   * The y-axis is languages, and the x-axis is total score.
+   * The individual segments on the bars is the different words of the classification,
+   * and the width of segment is its attribution to the total score.
+   * Colours of bars holds no significance other than making it easier to distinguish the segments.
+   * @param timeout Time until plot is forced closed.
+   * @return this instance.
+   */
 
   def plotBarChart(timeout: FiniteDuration = 30.seconds): this.type = execute{
 
@@ -80,8 +112,8 @@ class TestResult(data: Seq[(Language, Seq[Language#Word])]){
       case Failure(exception) => throw exception
 
       case Success(process) =>
-        process.waitFor(timeout.length, timeout.unit)
-        process.destroyForcibly()
+        val forceCloser = new Timer()
+        forceCloser.schedule(new TimerTask { override def run(): Unit = process.destroyForcibly() }, timeout.toMillis)
     }
   }
 }
