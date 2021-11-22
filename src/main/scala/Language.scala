@@ -247,7 +247,6 @@ sealed trait Language { lang:Product =>
        * train-data and therefore must be correct. After infinitely many iteration, the model will
        * have 100% confidence in "hello" as well.
        *
-       *
        * @param totalScore The accounted sum of weights before adjustment has begun.
        * @param numberOfWords Number of words accounted for.
        */
@@ -260,34 +259,50 @@ sealed trait Language { lang:Product =>
   }
 }
 
-case object Thai extends Language.Spanning(Language.Letters.thai)
+/**
+ * Declared languages supported by this model.
+ */
+
+case object Thai extends Language.Explicit(Language.Letters.thai)
 case object Korean extends Language.Scripted(HANGUL, HAN) with Language.WhitespaceIgnored
 case object Indonesian extends Language.Blocked(BASIC_LATIN)
-case object Spanish extends Language.Spanning(Language.Letters.spanish)
+case object Spanish extends Language.Explicit(Language.Letters.spanish)
 case object Russian extends Language.Scripted(UnicodeScript.CYRILLIC)
 case object Arabic extends Language.Scripted(UnicodeScript.ARABIC)
 case object Latin extends Language.Blocked(BASIC_LATIN)
-case object Estonian extends Language.Spanning(Language.Letters.estonian)
-case object Dutch extends Language.Spanning(Language.Letters.dutch)
-case object Portugese extends Language.Spanning(Language.Letters.portuguese)
+case object Estonian extends Language.Explicit(Language.Letters.estonian)
+case object Dutch extends Language.Explicit(Language.Letters.dutch)
+case object Portugese extends Language.Explicit(Language.Letters.portuguese)
 case object Persian extends Language.Scripted(UnicodeScript.ARABIC)
 case object Japanese extends Language.Scripted(Hiragana, Katakana, HAN) with Language.WhitespaceIgnored
 case object Chinese extends Language.Scripted(HAN) with Language.WhitespaceIgnored
-case object Hindi extends Language.Spanning(Language.Letters.hindi)
-case object French extends Language.Spanning(Language.Letters.french)
-case object Turkish extends Language.Spanning(Language.Letters.turkish)
-case object English extends Language.Spanning(Language.Letters.english)
-case object Tamil extends Language.Spanning(Language.Letters.tamil)
-case object Romanian extends Language.Spanning(Language.Letters.romanian)
-case object Pushto extends Language.Spanning(Language.Letters.pushto)
-case object Swedish extends Language.Spanning(Language.Letters.swedish)
-case object Urdu extends Language.Spanning(Language.Letters.urdu)
+case object Hindi extends Language.Explicit(Language.Letters.hindi)
+case object French extends Language.Explicit(Language.Letters.french)
+case object Turkish extends Language.Explicit(Language.Letters.turkish)
+case object English extends Language.Explicit(Language.Letters.english)
+case object Tamil extends Language.Explicit(Language.Letters.tamil)
+case object Romanian extends Language.Explicit(Language.Letters.romanian)
+case object Pushto extends Language.Explicit(Language.Letters.pushto)
+case object Swedish extends Language.Explicit(Language.Letters.swedish)
+case object Urdu extends Language.Explicit(Language.Letters.urdu)
 
 object Language{
 
-  def dictionary: Map[Language,Seq[Language#Word]] = languages.toSeq
+  /**
+   * A global dictionary containing all words contained in all languages.
+   * @return The dictionary.
+   */
+
+  def dictionary: Map[Language,Seq[Language#Word]] = values.toSeq
     .flatMap(_.vocabulary)
     .groupMap(_.language)(word => word)
+
+  /**
+   * Loads the data-set from resources.
+   * @param regex regex to parse the csv.
+   * @param name name of the resource.
+   * @return A unsorted list of the tuples with languages and train-data.
+   */
 
   private def readData(regex: Regex, name: String): Seq[(Language, String)] = for{
     data <- Manager(manager => manager(Source.fromResource(name)).mkString).toOption.toSeq
@@ -296,17 +311,22 @@ object Language{
     result <- lang.zip(Some(text))
   } yield result
 
+  /**
+   * Performs 100% guided learning.
+   * @param regex the regex to parse the csv.
+   * @param name the name of the file.
+   */
+
   def loadFromResource(regex: Regex, name: String): Unit = readData(regex, name)
     .foreach{ case (language, text) => language.loadTrainData(text) }
 
   /**
    * Loads dataset from resources. Then proceeds to train the model according to the validation-policy.
-   * The data is always shuffled before it's forwarded to the model. The results between each run may vary,
-   * but ratio of right/wrong guesses should remain fairly stable at roughly 12%.
+   * The data is always shuffled before it's forwarded to the model.
    * @param regex csvParser to read the data.
    * @param name name of the file.
    * @param validationRatio A double in the range <0,1>. This percent-factor determines how much of
-   *                        the dataset is strip out to be used for validation instead.
+   *                        the dataset is stripped out to be used for validation instead.
    * @return Validation result. Allows further examining of the data.
    */
 
@@ -318,8 +338,15 @@ object Language{
       new ValidationResult(prefix.map{ case (language, text) => (language, classifyLanguage(text)) })
   }
 
+  /**
+   * Classifies the provided test-data, then returns TestResult-object which
+   * can be used to analyse the result.
+   * @param sample Sample of arbitrary many words.
+   * @return TestResult which may be used to analyse result.
+   */
+
   def classifyLanguage(sample: String): TestResult = {
-    val temp = languages
+    val temp = values
       .map(lang => (lang, lang.loadTestData(sample))) // Parse input text
       .map{ case (language, words) => (language, words.map(_.score).sum, words) } // Calculate score by language
 
@@ -334,20 +361,46 @@ object Language{
     new TestResult(result)
   }
 
-  sealed abstract class Spanning(letters: Iterable[Char]*) extends Language { this:Product =>
+  /**
+   * Languages which inherits this class uses fine-grained filtering to filter out invalid characters.
+   * The constructor accepts a iterable of explicitly defined letters which is valid in this language.
+   * @param letters Explicitly defined letters.
+   */
+
+  sealed abstract class Explicit(letters: Iterable[Char]*) extends Language { this:Product =>
     override def mayContain(chars: Char*): Boolean = chars
       .forall(letters.flatten.contains)
   }
+
+  /**
+   * Languages which inherits this class uses defines their valid letter-encoding inaccurately by
+   * unicode-scripts. In some languages the valid letters count may be too many too define explicitly.
+   * @param unicodeScripts Valid Unicode-scripts for this language.
+   */
+
   sealed abstract class Scripted(unicodeScripts: UnicodeScript*) extends Language { this:Product =>
     override def mayContain(chars: Char*): Boolean = chars
       .map(char => UnicodeScript.of(char.toInt))
       .forall(unicodeScripts.contains)
   }
+
+  /**
+   * A hybrid of Scripted and Explicit. Subclasses can inherit this class to define valid letters in smaller
+   * unicode-blocks instead.
+   * @param unicodeBlocks Valid Unicode-blocks for this language.
+   */
+
   sealed abstract class Blocked(unicodeBlocks: UnicodeBlock*) extends Language { this:Product =>
     override def mayContain(chars: Char*): Boolean = chars
       .map(char => UnicodeScript.of(char.toInt))
       .forall(unicodeBlocks.contains)
   }
+
+  /**
+   * Some languages may not distinguish words by whitespace. This mixin trait can be applied to such languages
+   * if such languages doesnt have a known policy for splitting words. If this trait is applied,
+   * every character will be interpreted as a unique word instead.
+   */
 
   trait WhitespaceIgnored{ this:Language =>
     override protected def splitWords(text: String): Array[String] = text
@@ -356,6 +409,11 @@ object Language{
       .map(_.toString)
       .toArray
   }
+
+  /**
+   * Definitions of different letter-schemas for different languages. Note these are explicitly defined.
+   * Some languages may accept a broader range if they inherit Scripted or Blocked class instead.
+   */
 
   object Letters{
     lazy val thai: Set[Char] = Set.range('\u0e00', '\u0e4f')
@@ -377,6 +435,12 @@ object Language{
       '\u0639', '\u063A', '\u0641', '\u0642', '\u06A9', '\u06AB', '\u0644', '\u0645', '\u0646', '\u06BC',
       '\u06BA', '\u0648', '\u0647', '\u06C0', '\u064A', '\u06D0', '\u06CC', '\u06D2', '\u06CD', '\u0626')
   }
+
+  /**
+   * Accepts a language name, and return the corresponding language object if it exists.
+   * @param name Name of the language. String is lower cased and stripped.
+   * @return The language if any match.
+   */
 
   def forName(name: String): Option[Language] = name.strip().toLowerCase match {
     case "thai" => Some(Thai)
@@ -404,7 +468,12 @@ object Language{
     case _ => None
   }
 
-  def languages: Set[Language] = Set(
+  /**
+   * List of all language objects incorporated in the detection-model.
+   * @return The list of languages.
+   */
+
+  def values: Set[Language] = Set(
     Thai,
     Indonesian,
     Spanish,
@@ -426,6 +495,6 @@ object Language{
     Portugese,
     Pushto,
     Swedish,
-    Urdu,
+    Urdu
   )
 }
