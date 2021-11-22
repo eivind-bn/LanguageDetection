@@ -1,2 +1,2 @@
-# language-detection
+# language-classifier
 Machine learning assignment

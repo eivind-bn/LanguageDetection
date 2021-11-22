@@ -1,4 +1,4 @@
-name := "machine-learning"
+name := "language-classifier"
 
 version := "0.1"
 
