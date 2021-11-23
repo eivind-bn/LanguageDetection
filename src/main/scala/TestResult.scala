@@ -18,7 +18,7 @@ class TestResult(data: Seq[(Language, Seq[Language#Word])]){
     .map{ case (language, value) => Observation(language, value) }
 
   /**
-   * Simply a convenience method levitating the necessity of writing 'this' as the last statement after performing
+   * Simply a convenience method eliminating the necessity of writing 'this' as the last statement after performing
    * stateful work.
    *
    * @param runnable The code to execute. For multi-statements, switch from brackets '()' to curly-brackets '{}'

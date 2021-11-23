@@ -218,7 +218,7 @@ sealed trait Language { lang:Product =>
        *
        * Model has concluded the sample is english. Now it needs to make weight adjustments.
        *
-       * After ----> English.Word("hello", w=0.375), English.Word("world", w=0.625)
+       * After => English.Word("hello", w=0.375), English.Word("world", w=0.625)
        *
        * The idea is that the model is uncertain that English.Word("hello", w=0.25) is actually english.
        * However, it's more more certain that English.Word("world", w=0.75) is english judging by the current weight.
@@ -233,7 +233,7 @@ sealed trait Language { lang:Product =>
        * 4. English.Word("hello", w=0.484375), English.Word("world", w=0.51576)
        *
        *
-       * Now lets illustrate the same, but let 1 word be the immutable counterpart.
+       * Now lets illustrate the same case, but let 1 word be the immutable counterpart instead.
        *
        * 0. English.Word("hello", w=0.25), English.ImmutableWord("world", w=1.00)
        * 1. English.Word("hello", w=0.4375), English.ImmutableWord("world", w=1.00)
@@ -244,7 +244,7 @@ sealed trait Language { lang:Product =>
        * In this scenario the model encountered a train-data word which can be though of as an axiom.
        * The model became more and more confident that English.Word("hello", w=0.25) is english,
        * whilst loosing no confidence in English.ImmutableWord("world", w=1.00) since it's sourced from the
-       * train-data and therefore must be correct. After infinitely many iteration, the model will
+       * train-data and therefore must be correct. After infinitely many iterations, the model will
        * have 100% confidence in "hello" as well.
        *
        * @param totalScore The accounted sum of weights before adjustment has begun.

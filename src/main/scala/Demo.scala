@@ -57,6 +57,7 @@ object Demo extends App {
       .loadFromResource(csvParser, resource, value / 100)
       .printValidationSummary()
       .validationBarChart(timeout = 10.minutes)
+      .plotAxiomDistribution(timeout = 10.minutes)
 
     case Success(_) =>
       println("Value must be bounded as follows: 0.0 <= p < 100.0. Please try again.")
