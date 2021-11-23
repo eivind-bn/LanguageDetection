@@ -333,9 +333,9 @@ object Language{
   def loadFromResource(regex: Regex, name: String, validationRatio: Double): ValidationResult =
     Random.shuffle(readData(regex, name)) match {
     case data =>
-      val (prefix, suffix) = data.splitAt((data.length * validationRatio).toInt)
-      suffix.foreach{ case (language, text) => language.loadTrainData(text) }
-      new ValidationResult(prefix.map{ case (language, text) => (language, classifyLanguage(text)) })
+      val (validationData, trainData) = data.splitAt((data.length * validationRatio).toInt)
+      trainData.foreach{ case (language, text) => language.loadTrainData(text) }
+      new ValidationResult(validationData.map{ case (language, text) => (language, classifyLanguage(text)) })
   }
 
   /**
