@@ -285,6 +285,8 @@ case object Romanian extends Language.Explicit(Language.Letters.romanian)
 case object Pushto extends Language.Explicit(Language.Letters.pushto)
 case object Swedish extends Language.Explicit(Language.Letters.swedish)
 case object Urdu extends Language.Explicit(Language.Letters.urdu)
+case object Bokmål extends Language.Explicit(Language.Letters.norwegian)
+case object Nynorsk extends Language.Explicit(Language.Letters.norwegian)
 
 object Language{
 
@@ -416,6 +418,7 @@ object Language{
    */
 
   object Letters{
+    lazy val norwegian: Set[Char] = Set.range('a','z') ++ Set('æ','ø','å','é', 'è', 'ê', 'ó', 'ò', 'ô', 'ù', 'ü', 'è', 'à')
     lazy val thai: Set[Char] = Set.range('\u0e00', '\u0e4f')
     lazy val spanish: Set[Char] = Set.range('a', 'z') ++ Set('ñ','á', 'é', 'í', 'ó', 'ú','ü')
     lazy val estonian: Set[Char] = Set('a','b','d','e','g','h','i','j','k','l','m','n', 'o','p','r','s','t','u','v','õ','ä','ö','ü')
@@ -465,6 +468,8 @@ object Language{
     case "portugese" => Some(Portugese)
     case "swedish" => Some(Swedish)
     case "urdu" => Some(Urdu)
+    case "bokmål" => Some(Bokmål)
+    case "nynorsk" => Some(Nynorsk)
     case _ => None
   }
 
@@ -473,7 +478,7 @@ object Language{
    * @return The list of languages.
    */
 
-  def values: Set[Language] = Set(
+  val values: Set[Language] = Set(
     Thai,
     Indonesian,
     Spanish,
@@ -495,6 +500,8 @@ object Language{
     Portugese,
     Pushto,
     Swedish,
-    Urdu
+    Urdu,
+    Bokmål,
+    Nynorsk
   )
 }

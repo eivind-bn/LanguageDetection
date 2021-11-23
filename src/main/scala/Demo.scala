@@ -7,8 +7,8 @@ import scala.util.matching.Regex
 
 object Demo extends App {
 
-  val csvParser: Regex = "(?<text>[\\S\\s]+?),(?<language>\\w+)".r
-  val resource = "dataset.csv"
+  val csvParser: Regex = "(?<text>[\\S\\s]+?),(?<language>\\S+)".r
+  val resource = "dataset-modded.csv"
 
   /**
    * Applies the data-set to the language-detection model.

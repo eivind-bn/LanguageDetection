@@ -74,7 +74,7 @@ class TestResult(data: Seq[(Language, Seq[Language#Word])]){
     val buffer = observations.toIndexedSeq //Need to buffer collection due to multiple traversals.
     val segmentCount = buffer.map(_.words.length).maxOption.getOrElse(0) //Find max word-count by each language. Bar-chart requires at least that many bars.
     def matrixElement(row: Int, column: Int): Option[Double] = buffer.unapply(row).flatMap(_.words.unapply(column)).map(_.score)
-    val bars = Seq.tabulate(22, segmentCount)((row,column) => matrixElement(row,column).getOrElse(0.0)) //Generate matrix. Rows length must match language count.
+    val bars = Seq.tabulate(observations.size, segmentCount)((row,column) => matrixElement(row,column).getOrElse(0.0)) //Generate matrix. Rows length must match language count.
       .map(_.scan(0.0)(_ + _)) // Succeeding bar segments must be stacked. Need to adjust score to be sum of current score plus preceding score.
       .transpose // Because pyplot requires it.
       .map(_.mkString("plt.barh(ind, [", ",", "], width, zorder=3)")) // Convert rows to python list surrounded by plt.barh call.
