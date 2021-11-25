@@ -1,14 +1,11 @@
-import java.io.IOException
-import java.util.{Timer, TimerTask}
 import scala.concurrent.duration.FiniteDuration
-import scala.util.{Failure, Success, Try}
 
 /**
- * Class used to analyse results of validations
+ * Class used to analyse results from semi-supervised training.
  * @param data Necessary data derived from classification.
  */
 
-class ValidationResult(data: Seq[(Language, TestResult)]) {
+class TrainingResult(data: Seq[(Language, TestResult)]) {
 
   case class Observation(correctLanguage: Language, testResult: TestResult){
 
@@ -41,15 +38,15 @@ class ValidationResult(data: Seq[(Language, TestResult)]) {
   private def execute(runnable: Unit): this.type = this
 
   /**
-   * Prints short summary of validation.
+   * Prints short summary from the semi-supervised training phase.
    * @return This instance.
    */
 
-  def printValidationSummary(): this.type = execute{
+  def printTrainingSummary(): this.type = execute{
     val (rights, wrongs) = observations.partition(_.isCorrect)
     println(
       s"""
-         |Validation summary:
+         |Training summary:
          |Correct guesses: '${rights.size}'
          |Wrong guesses: '${wrongs.size}'
          |ratio: '${wrongs.size.toDouble / rights.size}'
@@ -58,9 +55,9 @@ class ValidationResult(data: Seq[(Language, TestResult)]) {
   }
 
   /**
-   * Plots python bar-chart visualizing the the distribution of axioms vs deductions
-   * The y-axis is languages, and the absolute value of the x-axis
-   * is the number of axioms and deductions respectively.
+   * Plots python bar-chart visualizing the the distribution of axiom-count vs induction-count.
+   * The y-axis represents languages, and the absolute value of the x-axis
+   * is the number of axioms and inductions respectively.
    * @param timeout Time until plot is forced closed.
    * @return this instance.
    */
@@ -76,7 +73,7 @@ class ValidationResult(data: Seq[(Language, TestResult)]) {
     val axiomCounts = axioms
       .map(-_.size)
 
-    val deductionCounts = deductions
+    val inductionCounts = deductions
       .map(words => words.filterNot(_.score == 0.0))
       .map(_.size)
 
@@ -89,37 +86,26 @@ class ValidationResult(data: Seq[(Language, TestResult)]) {
          |ind = np.arange(${language.size})
          |width = 0.6
          |
-         |fig = plt.figure("Continuous learning summary")
+         |fig = plt.figure('Semi-supervised training summary')
          |
          |${axiomCounts.mkString("plt.barh(ind, [", ",", "], width, zorder=3)")}
-         |${deductionCounts.mkString("plt.barh(ind, [", ",", "], width, zorder=3)")}
+         |${inductionCounts.mkString("plt.barh(ind, [", ",", "], width, zorder=3)")}
          |
-         |plt.title('Visualization of axiom/deduction distribution')
-         |plt.xlabel('Axiom/Deduction')
+         |plt.title('Visualization of axiom-count vs induction-count')
+         |plt.xlabel('Axiom-count vs induction-count')
          |plt.yticks(ind, ${language.map(language => s"'$language'").mkString("[", ",", "]")})
-         |plt.grid(True, linestyle = "dashed", zorder=0)
+         |plt.grid(True, linestyle = 'dashed', zorder=0)
          |
          |plt.show()
          |""".stripMargin
     }
 
-    def runPython(): Try[Process] = Try(new ProcessBuilder("python3", "-c", pythonBarChart).inheritIO().start())
-
-    if(observations.nonEmpty) runPython() match {
-      case Failure(_: IOException) => println(Console.RED + "Error: Could not visualize axiom/deduction distribution. " +
-        "Ensure python3, numpy, and matplotlib is installed." + Console.RESET)
-
-      case Failure(exception) => throw exception
-
-      case Success(process) =>
-        val forceCloser = new Timer()
-        forceCloser.schedule(new TimerTask { override def run(): Unit = process.destroyForcibly() }, timeout.toMillis)
-    }
+    Python.execute(pythonBarChart)
   }
 
   /**
-   * Plots python bar-chart visualizing the data of this validation-result.
-   * The y-axis is languages, and the x-axis is the number of right and wrong guesses.
+   * Plots python bar-chart visualizing wrong-guesses and right-guesses for each language respectively.
+   * The y-axis represents languages, and the x-axis is the number of right and wrong guesses.
    * @param timeout Time until plot is forced closed.
    * @return this instance.
    */
@@ -151,31 +137,20 @@ class ValidationResult(data: Seq[(Language, TestResult)]) {
          |ind = np.arange(${truePositive.length})
          |width = 0.6
          |
-         |fig = plt.figure("Validation summary")
+         |fig = plt.figure('Semi-supervised training summary')
          |
          |${truePositive.map(_._2).mkString("plt.barh(ind, [", ",", "], width, zorder=3)")}
          |${falsePositive.mkString("plt.barh(ind, [", ",", "], width, zorder=3)")}
          |
          |plt.title('Comparison of false/true classifications')
-         |plt.xlabel('False/True')
+         |plt.xlabel('False-classifications vs true-classifications')
          |plt.yticks(ind, ${truePositive.map{ case (language, _) => s"'$language'"}.mkString("[", ",", "]")})
-         |plt.grid(True, linestyle = "dashed", zorder=0)
+         |plt.grid(True, linestyle = 'dashed', zorder=0)
          |
          |plt.show()
          |""".stripMargin
     }
 
-    def runPython(): Try[Process] = Try(new ProcessBuilder("python3", "-c", pythonBarChart).inheritIO().start())
-
-    if(observations.nonEmpty) runPython() match {
-      case Failure(_: IOException) => println(Console.RED + "Error: Could not visualize validation. " +
-        "Ensure python3, numpy, and matplotlib is installed." + Console.RESET)
-
-      case Failure(exception) => throw exception
-
-      case Success(process) =>
-        val forceCloser = new Timer()
-        forceCloser.schedule(new TimerTask { override def run(): Unit = process.destroyForcibly() }, timeout.toMillis)
-    }
+    Python.execute(pythonBarChart)
   }
 }

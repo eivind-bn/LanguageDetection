@@ -42,8 +42,8 @@ sealed trait Language { lang:Product =>
    * @return The inserted words.
    */
 
-  def loadTrainData(text: String): Seq[Word] = splitWords(text)
-    .map(Word.parseTrain)
+  def loadLabeledData(text: String): Seq[Word] = splitWords(text)
+    .map(Word.makeAxiom)
     .tapEach(word => entries.update(word.text, word))
     .toSeq
 
@@ -57,9 +57,9 @@ sealed trait Language { lang:Product =>
    * @return The words already present in vocabulary, and the newly discovered ones if any.
    */
 
-  private[Language] def loadTestData(text: String): Seq[Word] = splitWords(text) match {
+  private[Language] def loadNonLabeledData(text: String): Seq[Word] = splitWords(text) match {
     // Insert testdata in this language only if at least one word exist in it already.
-    case text if text.exists(entries.contains) => text.map(text => entries.getOrElseUpdate(text, Word.parseTest(text))).toSeq
+    case text if text.exists(entries.contains) => text.map(text => entries.getOrElseUpdate(text, Word.makeInduction(text))).toSeq
     case _ => Seq.empty
   }
 
@@ -163,7 +163,7 @@ sealed trait Language { lang:Product =>
      * @return The new word.
      */
 
-    def parseTrain(_text: String): Word = new Word {
+    def makeAxiom(_text: String): Word = new Word {
       override val text: String = _text
       override protected[Language] def meanAdjust(totalScore: Double, numberOfWords: Int): Unit = {/*NOOP*/}
       override def score: Double = 1.0
@@ -182,7 +182,7 @@ sealed trait Language { lang:Product =>
      * @return The new word.
      */
 
-    def parseTest(_text: String, adjustThreshold: Int = 6): Word = new Word {
+    def makeInduction(_text: String, adjustThreshold: Int = 6): Word = new Word {
       override val text: String = _text
 
       /**
@@ -314,30 +314,30 @@ object Language{
   } yield result
 
   /**
-   * Performs 100% guided learning.
+   * Performs 100% supervised-learning.
    * @param regex the regex to parse the csv.
    * @param name the name of the file.
    */
 
   def loadFromResource(regex: Regex, name: String): Unit = readData(regex, name)
-    .foreach{ case (language, text) => language.loadTrainData(text) }
+    .foreach{ case (language, text) => language.loadLabeledData(text) }
 
   /**
-   * Loads dataset from resources. Then proceeds to train the model according to the validation-policy.
+   * Loads dataset from resources. Then performs semi-supervised training according to the ration given.
    * The data is always shuffled before it's forwarded to the model.
    * @param regex csvParser to read the data.
    * @param name name of the file.
-   * @param validationRatio A double in the range <0,1>. This percent-factor determines how much of
-   *                        the dataset is stripped out to be used for validation instead.
-   * @return Validation result. Allows further examining of the data.
+   * @param unlabeledRatio A double in the range <0,1>. This percent-factor determines how much of
+   *                        the dataset is stripped out to be used for unsupervised learning instead.
+   * @return Training result. Allows further examining of the data.
    */
 
-  def loadFromResource(regex: Regex, name: String, validationRatio: Double): ValidationResult =
+  def loadFromResource(regex: Regex, name: String, unlabeledRatio: Double): TrainingResult =
     Random.shuffle(readData(regex, name)) match {
     case data =>
-      val (validationData, trainData) = data.splitAt((data.length * validationRatio).toInt)
-      trainData.foreach{ case (language, text) => language.loadTrainData(text) }
-      new ValidationResult(validationData.map{ case (language, text) => (language, classifyLanguage(text)) })
+      val (unlabeledData, labeledData) = data.splitAt((data.length * unlabeledRatio).toInt)
+      labeledData.foreach{ case (language, text) => language.loadLabeledData(text) }
+      new TrainingResult(unlabeledData.map{ case (language, text) => (language, classifyLanguage(text)) })
   }
 
   /**
@@ -349,7 +349,7 @@ object Language{
 
   def classifyLanguage(sample: String): TestResult = {
     val temp = values
-      .map(lang => (lang, lang.loadTestData(sample))) // Parse input text
+      .map(lang => (lang, lang.loadNonLabeledData(sample))) // Parse input text
       .map{ case (language, words) => (language, words.map(_.score).sum, words) } // Calculate score by language
 
     val result = temp

@@ -1,7 +1,4 @@
-import java.io.IOException
-import java.util.{Timer, TimerTask}
 import scala.concurrent.duration.{DurationInt, FiniteDuration}
-import scala.util.{Failure, Success, Try}
 
 /**
  * Class used to analyse results of classifications.
@@ -89,31 +86,19 @@ class TestResult(data: Seq[(Language, Seq[Language#Word])]){
          |ind = np.arange(${observations.size})
          |width = 0.6
          |
-         |fig = plt.figure("Language classification")
+         |fig = plt.figure('Language classification')
          |
          |${bars.mkString("\n")}
          |
          |plt.title('Score by language visualization')
          |plt.xlabel('Total score')
          |plt.yticks(ind, ${observations.map(result => s"'${result.language}'").mkString("[", ",", "]")})
-         |plt.grid(True, linestyle = "dashed", zorder=0)
+         |plt.grid(True, linestyle = 'dashed', zorder=0)
          |
          |plt.show()
          |""".stripMargin
     }
 
-    def runPython(): Try[Process] = Try(new ProcessBuilder("python3", "-c", pythonBarChart).inheritIO().start())
-
-    if(findWinner.isDefined) runPython() match {
-      case Failure(_: IOException) => println(Console.RED + "Error: Could not visualize result. " +
-        "Required dependencies is python3, numpy, and matplotlib\nFalling back to textual results..." + Console.RESET)
-      printScoreOfAll()
-
-      case Failure(exception) => throw exception
-
-      case Success(process) =>
-        val forceCloser = new Timer()
-        forceCloser.schedule(new TimerTask { override def run(): Unit = process.destroyForcibly() }, timeout.toMillis)
-    }
+    Python.execute(pythonBarChart)
   }
 }
