@@ -14,14 +14,14 @@ class TrainingResult(data: Seq[(Language, TestResult)]) {
      * @return True if correct.
      */
 
-    def isCorrect: Boolean = testResult.findWinner.forall(_.language == correctLanguage)
+    def isCorrect: Boolean = testResult.findWinner.exists(_.language == correctLanguage)
 
     /**
      * Tests if classification is incorrect.
      * @return False if correct.
      */
 
-    def isIncorrect: Boolean = !isCorrect
+    def isIncorrect: Boolean = testResult.findWinner.exists(_.language != correctLanguage)
   }
 
   val observations: Seq[Observation] = data
@@ -43,13 +43,14 @@ class TrainingResult(data: Seq[(Language, TestResult)]) {
    */
 
   def printTrainingSummary(): this.type = execute{
-    val (rights, wrongs) = observations.partition(_.isCorrect)
+    val rights = observations.filter(_.isCorrect)
+    val wrongs = observations.filter(_.isIncorrect)
     println(
       s"""
          |Training summary:
          |Correct guesses: '${rights.size}'
          |Wrong guesses: '${wrongs.size}'
-         |ratio: '${wrongs.size.toDouble / rights.size}'
+         |Fail-rate: '${wrongs.size.toDouble / (rights.size + wrongs.size)}'
          |""".stripMargin
     )
   }
