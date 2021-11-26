@@ -323,7 +323,7 @@ object Language{
     .foreach{ case (language, text) => language.loadLabeledData(text) }
 
   /**
-   * Loads dataset from resources. Then performs semi-supervised training according to the ration given.
+   * Loads dataset from resources. Then performs semi-supervised training according to the ratio given.
    * The data is always shuffled before it's forwarded to the model.
    * @param regex csvParser to read the data.
    * @param name name of the file.
