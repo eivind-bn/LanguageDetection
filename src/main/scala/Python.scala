@@ -14,7 +14,7 @@ object Python {
       name
     }.getOrElse(throw new UnsupportedOperationException("Python not detected in environment."))
 
-  def execute(code: String, timeout: Duration = 10.minutes, block: Boolean = false): Process = {
+  def execute(code: String, timeout: Duration = 10.minutes, block: Boolean = false): Try[Process] = Try{
     val process = new ProcessBuilder(cmd, "-c", code).inheritIO().start()
     timeout match {
       case infinite: Duration.Infinite if block => process.waitFor()

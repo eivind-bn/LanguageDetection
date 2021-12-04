@@ -58,6 +58,7 @@ object Demo extends App {
       .printTrainingSummary()
       .validationBarChart(timeout = 10.minutes)
       .plotAxiomDistribution(timeout = 10.minutes)
+      .scatterViabilityTrend(timeout = 10.minutes)
 
     case Success(_) =>
       println("Value must be bounded as follows: 0.0 <= p < 100.0. Please try again.")

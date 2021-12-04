@@ -1,4 +1,6 @@
 
+import Language.WhitespaceIgnored
+
 import java.lang.Character.UnicodeBlock._
 import java.lang.Character.UnicodeScript.{HIRAGANA => Hiragana, KATAKANA => Katakana, _}
 import java.lang.Character.{UnicodeBlock, UnicodeScript}
@@ -63,15 +65,6 @@ sealed trait Language { lang:Product =>
     case _ => Seq.empty
   }
 
-  /**
-   * Different languages have different letter encodings. This method should return true i all chars are valid
-   * in this particular language, or else false.
-   *
-   * @param chars The codepoints to validate.
-   * @return True if ALL valid, or else false.
-   */
-
-  protected[this] def mayContain(chars: Char*): Boolean
 
   /**
    * Splits a string of arbitrary words into its respective words. Every invalid codepoint should also be filtered out.
@@ -87,7 +80,7 @@ sealed trait Language { lang:Product =>
     .toLowerCase
     .filter(char => char.isLetter || char.isWhitespace || char == '\'')
     .split("[\\s-]+")
-    .filter(word => word.nonEmpty && mayContain(word.toSeq:_*))
+    .filter(word => word.nonEmpty)
 
   /**
    * Trait for every word of this instance. May or may not be mutable.
@@ -127,11 +120,10 @@ sealed trait Language { lang:Product =>
      * May or may not actually mutate the word depending on the subtype definition. If this word is desired
      * as immutable, then the subtype may simply override this method without any statements (NOOP).
      *
-     * @param totalScore The accounted sum of weights before adjustment has begun.
-     * @param numberOfWords Number of words accounted for.
+     * @param meanTotal Average score of all words in sample text.
      */
 
-    protected[Language] def meanAdjust(totalScore: Double, numberOfWords: Int): Unit
+    protected[Language] def meanAdjust(meanTotal: Double): Unit
     override def length(): Int = text.length
     override def charAt(index: Int): Char = text.charAt(index)
     override def subSequence(start: Int, end: Int): CharSequence = text.subSequence(start, end)
@@ -145,7 +137,7 @@ sealed trait Language { lang:Product =>
     def copy: Word = new Word {
       override val text: String = self.text
       override val score: Double = self.score
-      override protected[Language] def meanAdjust(totalScore: Double, numberOfWords: Int): Unit = {/*NOOP*/}
+      override protected[Language] def meanAdjust(meanTotal: Double): Unit = {/*NOOP*/}
 
     }
     override def equals(obj: Any): Boolean = obj match {
@@ -165,7 +157,7 @@ sealed trait Language { lang:Product =>
 
     def makeAxiom(_text: String): Word = new Word {
       override val text: String = _text
-      override protected[Language] def meanAdjust(totalScore: Double, numberOfWords: Int): Unit = {/*NOOP*/}
+      override protected[Language] def meanAdjust(meanTotal: Double): Unit = {/*NOOP*/}
       override def score: Double = 1.0
       override def toString: String = s"${lang.productPrefix}.Word($text)"
     }
@@ -175,14 +167,10 @@ sealed trait Language { lang:Product =>
      * as other equal entries if any, or else 0.0 (the min-value).
      *
      * @param _text The properly formatted textual representation of this word (assumed to be correct).
-     * @param adjustThreshold Threshold to surpass if weight adjustments is allowed to occur.
-     *                        This threshold corresponds to amount of words present when classifying.
-     *                        The default threshold is 6 words. Sentences below 6 words may yield unstable
-     *                        classifications.
      * @return The new word.
      */
 
-    def makeInduction(_text: String, adjustThreshold: Int = 6): Word = new Word {
+    def makeInduction(_text: String): Word = new Word {
       override val text: String = _text
 
       /**
@@ -247,12 +235,10 @@ sealed trait Language { lang:Product =>
        * train-data and therefore must be correct. After infinitely many iterations, the model will
        * have 100% confidence in "hello" as well.
        *
-       * @param totalScore The accounted sum of weights before adjustment has begun.
-       * @param numberOfWords Number of words accounted for.
+       * @param meanTotal Average score of all words in sample text.
        */
 
-      override protected[Language] def meanAdjust(totalScore: Double, numberOfWords: Int): Unit =
-        if(numberOfWords > adjustThreshold) _score = (_score + (totalScore / numberOfWords))/2
+      override protected[Language] def meanAdjust(meanTotal: Double): Unit = _score = (_score + meanTotal)/2
 
       override def toString: String = s"${lang.productPrefix}.Word($text p=$percent%)"
     }
@@ -263,30 +249,30 @@ sealed trait Language { lang:Product =>
  * Declared languages supported by this model.
  */
 
-case object Thai extends Language.Explicit(Language.Letters.thai)
-case object Korean extends Language.Scripted(HANGUL, HAN) with Language.WhitespaceIgnored
-case object Indonesian extends Language.Blocked(BASIC_LATIN)
-case object Spanish extends Language.Explicit(Language.Letters.spanish)
-case object Russian extends Language.Scripted(UnicodeScript.CYRILLIC)
-case object Arabic extends Language.Scripted(UnicodeScript.ARABIC)
-case object Latin extends Language.Blocked(BASIC_LATIN)
-case object Estonian extends Language.Explicit(Language.Letters.estonian)
-case object Dutch extends Language.Explicit(Language.Letters.dutch)
-case object Portugese extends Language.Explicit(Language.Letters.portuguese)
-case object Persian extends Language.Scripted(UnicodeScript.ARABIC)
-case object Japanese extends Language.Scripted(Hiragana, Katakana, HAN) with Language.WhitespaceIgnored
-case object Chinese extends Language.Scripted(HAN) with Language.WhitespaceIgnored
-case object Hindi extends Language.Explicit(Language.Letters.hindi)
-case object French extends Language.Explicit(Language.Letters.french)
-case object Turkish extends Language.Explicit(Language.Letters.turkish)
-case object English extends Language.Explicit(Language.Letters.english)
-case object Tamil extends Language.Explicit(Language.Letters.tamil)
-case object Romanian extends Language.Explicit(Language.Letters.romanian)
-case object Pushto extends Language.Explicit(Language.Letters.pushto)
-case object Swedish extends Language.Explicit(Language.Letters.swedish)
-case object Urdu extends Language.Explicit(Language.Letters.urdu)
-case object Bokmål extends Language.Explicit(Language.Letters.norwegian)
-case object Nynorsk extends Language.Explicit(Language.Letters.norwegian)
+case object Thai extends Language
+case object Korean extends Language with WhitespaceIgnored
+case object Indonesian extends Language
+case object Spanish extends Language
+case object Russian extends Language
+case object Arabic extends Language
+case object Latin extends Language
+case object Estonian extends Language
+case object Dutch extends Language
+case object Portugese extends Language
+case object Persian extends Language
+case object Japanese extends Language with WhitespaceIgnored
+case object Chinese extends Language with WhitespaceIgnored
+case object Hindi extends Language
+case object French extends Language
+case object Turkish extends Language
+case object English extends Language
+case object Tamil extends Language
+case object Romanian extends Language
+case object Pushto extends Language
+case object Swedish extends Language
+case object Urdu extends Language
+case object Bokmål extends Language
+case object Nynorsk extends Language
 
 object Language{
 
@@ -332,12 +318,17 @@ object Language{
    * @return Training result. Allows further examining of the data.
    */
 
-  def loadFromResource(regex: Regex, name: String, unlabeledRatio: Double): TrainingResult =
-    Random.shuffle(readData(regex, name)) match {
-    case data =>
-      val (unlabeledData, labeledData) = data.splitAt((data.length * unlabeledRatio).toInt)
-      labeledData.foreach{ case (language, text) => language.loadLabeledData(text) }
-      new TrainingResult(unlabeledData.map{ case (language, text) => (language, classifyLanguage(text)) })
+  def loadFromResource(regex: Regex, name: String, unlabeledRatio: Double): TrainingResult = {
+    val data = Random.shuffle(readData(regex, name))
+
+    val (unlabeledData, labeledData) = data.splitAt((data.length * unlabeledRatio).toInt)
+
+    for((language, text) <- labeledData) language.loadLabeledData(text)
+
+    val result = unlabeledData
+      .map{ case (language, text) => (language, classifyLanguage(text)) }
+
+    new TrainingResult(result)
   }
 
   /**
@@ -356,47 +347,15 @@ object Language{
       .map{ case (language, score, words) => (language, words.map(_.copy)) } // Make immutable copies to save current score.
       .toSeq
 
-    temp
-      .maxByOption{ case (language, score, words) => score } // Pick highest score
-      .foreach{ case (language, score, words) => words.foreach(_.meanAdjust(score, words.length)) } // Adjust winner weights.
+    for{
+      (language, score, words) <- temp.maxByOption{ case (language, score, words) => score }
+      meanTotal = score/words.length
+      word <- words
+    } word.meanAdjust(meanTotal) //Adjust words in classified language.
 
     new TestResult(result)
   }
 
-  /**
-   * Languages which inherits this class uses fine-grained filtering to filter out invalid characters.
-   * The constructor accepts a iterable of explicitly defined letters which is valid in this language.
-   * @param letters Explicitly defined letters.
-   */
-
-  sealed abstract class Explicit(letters: Iterable[Char]*) extends Language { this:Product =>
-    override def mayContain(chars: Char*): Boolean = chars
-      .forall(letters.flatten.contains)
-  }
-
-  /**
-   * Languages which inherits this class uses defines their valid letter-encoding inaccurately by
-   * unicode-scripts. In some languages the valid letters count may be too many too define explicitly.
-   * @param unicodeScripts Valid Unicode-scripts for this language.
-   */
-
-  sealed abstract class Scripted(unicodeScripts: UnicodeScript*) extends Language { this:Product =>
-    override def mayContain(chars: Char*): Boolean = chars
-      .map(char => UnicodeScript.of(char.toInt))
-      .forall(unicodeScripts.contains)
-  }
-
-  /**
-   * A hybrid of Scripted and Explicit. Subclasses can inherit this class to define valid letters in smaller
-   * unicode-blocks instead.
-   * @param unicodeBlocks Valid Unicode-blocks for this language.
-   */
-
-  sealed abstract class Blocked(unicodeBlocks: UnicodeBlock*) extends Language { this:Product =>
-    override def mayContain(chars: Char*): Boolean = chars
-      .map(char => UnicodeScript.of(char.toInt))
-      .forall(unicodeBlocks.contains)
-  }
 
   /**
    * Some languages may not distinguish words by whitespace. This mixin trait can be applied to such languages
@@ -406,37 +365,10 @@ object Language{
 
   trait WhitespaceIgnored{ this:Language =>
     override protected def splitWords(text: String): Array[String] = text
-      .filter(char => char.isLetter && mayContain(char))
+      .filter(char => char.isLetter)
       .map(_.toLower)
       .map(_.toString)
       .toArray
-  }
-
-  /**
-   * Definitions of different letter-schemas for different languages. Note these are explicitly defined.
-   * Some languages may accept a broader range if they inherit Scripted or Blocked class instead.
-   */
-
-  object Letters{
-    lazy val norwegian: Set[Char] = Set.range('a','z') ++ Set('æ','ø','å','é', 'è', 'ê', 'ó', 'ò', 'ô', 'ù', 'ü', 'è', 'à')
-    lazy val thai: Set[Char] = Set.range('\u0e00', '\u0e4f')
-    lazy val spanish: Set[Char] = Set.range('a', 'z') ++ Set('ñ','á', 'é', 'í', 'ó', 'ú','ü')
-    lazy val estonian: Set[Char] = Set('a','b','d','e','g','h','i','j','k','l','m','n', 'o','p','r','s','t','u','v','õ','ä','ö','ü')
-    lazy val dutch: Set[Char] = Set.range('a', 'z') ++ Set('á','é','í','ó','ú','à','è','ë','ï','ö','ü','ĳ')
-    lazy val portuguese: Set[Char] = Set.range('a', 'z') ++ Set('á','é','í','ó','ú','ç','â','ê','ô','ã', 'õ','à', 'è', 'ì', 'ò', 'ù')
-    lazy val hindi: Set[Char] = Set.range('\u0900','\u097f') ++ Set.range('\uA8E0','\uA8FF') ++ Set.range('\u1CD0','\u1CFF')
-    lazy val french: Set[Char] = Set.range('a', 'z') ++ Set('ç','é','â','ê','î','ô','û','à','è','ì','ò','ù','ë','ï','ü')
-    lazy val turkish: Set[Char] = Set.range('a','z') ++ Set('ç','ğ','i','ö','ş','ü')
-    lazy val english: Set[Char] = Set.range('a', 'z')
-    lazy val tamil: Set[Char] = Set.range('\u0B80', '\u0BFF') ++ Set.range(0x11FC0.toChar, 0x11FFF.toChar)
-    lazy val romanian: Set[Char] = Set.range('a', 'z') ++ Set('ă','â','î','ș','ț')
-    lazy val swedish: Set[Char] = Set.range('a', 'z') ++ Set('å', 'ä', 'ö', 'é')
-    lazy val urdu: Set[Char] = Set.range('\u0627', '\u06D2')
-    lazy val pushto = Set('\u0627', '\u0622', '\u0628', '\u067E', '\u062A', '\u067C', '\u062B', '\u062C',
-      '\u0686', '\u062D', '\u062E', '\u0685', '\u0681', '\u062F', '\u0689', '\u0630', '\u0631', '\u0693',
-      '\u0632', '\u0698', '\u0696', '\u0633', '\u0634', '\u069A', '\u0635', '\u0636', '\u0637', '\u0638',
-      '\u0639', '\u063A', '\u0641', '\u0642', '\u06A9', '\u06AB', '\u0644', '\u0645', '\u0646', '\u06BC',
-      '\u06BA', '\u0648', '\u0647', '\u06C0', '\u064A', '\u06D0', '\u06CC', '\u06D2', '\u06CD', '\u0626')
   }
 
   /**
@@ -455,9 +387,13 @@ object Language{
     case "arabic" => Some(Arabic)
     case "latin" => Some(Latin)
     case "persian" => Some(Persian)
-    case "chinese" => Some(Chinese)
-    case "japanese" => Some(Japanese)
-    case "korean" => Some(Korean)
+    /*
+    Chinese, japanese and korean commented out for testing purposes.
+    These languages impacts success-rate badly due to different whitespace policy.
+    */
+//    case "chinese" => Some(Chinese)
+//    case "japanese" => Some(Japanese)
+//    case "korean" => Some(Korean)
     case "hindi" => Some(Hindi)
     case "french" => Some(French)
     case "turkish" => Some(Turkish)

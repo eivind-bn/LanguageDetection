@@ -1,4 +1,7 @@
+import scala.annotation.tailrec
+import scala.collection.immutable.{AbstractSeq, LinearSeq}
 import scala.concurrent.duration.FiniteDuration
+import scala.util.{Failure, Success}
 
 /**
  * Class used to analyse results from semi-supervised training.
@@ -45,12 +48,16 @@ class TrainingResult(data: Seq[(Language, TestResult)]) {
   def printTrainingSummary(): this.type = execute{
     val rights = observations.filter(_.isCorrect)
     val wrongs = observations.filter(_.isIncorrect)
+    val nulls = observations.filterNot(obs => obs.isCorrect || obs.isIncorrect)
     println(
       s"""
-         |Training summary:
+         |Training summary:${Console.GREEN}
          |Correct guesses: '${rights.size}'
+         |Success-rate: '${rights.size.toDouble / (rights.size + wrongs.size + nulls.size)}'${Console.RED}
          |Wrong guesses: '${wrongs.size}'
-         |Fail-rate: '${wrongs.size.toDouble / (rights.size + wrongs.size)}'
+         |Fail-rate: '${wrongs.size.toDouble / (rights.size + wrongs.size + nulls.size)}'${Console.YELLOW}
+         |Null guesses: '${nulls.size}'
+         |Null-rate: '${nulls.size.toDouble / (rights.size + wrongs.size + nulls.size)}'${Console.RESET}
          |""".stripMargin
     )
   }
@@ -101,7 +108,10 @@ class TrainingResult(data: Seq[(Language, TestResult)]) {
          |""".stripMargin
     }
 
-    Python.execute(pythonBarChart)
+    Python.execute(pythonBarChart) match {
+      case Failure(exception) => exception.printStackTrace()
+      case Success(value) =>
+    }
   }
 
   /**
@@ -152,6 +162,53 @@ class TrainingResult(data: Seq[(Language, TestResult)]) {
          |""".stripMargin
     }
 
-    Python.execute(pythonBarChart)
+    Python.execute(pythonBarChart) match {
+      case Failure(exception) => exception.printStackTrace()
+      case Success(value) =>
+    }
+  }
+
+  def scatterViabilityTrend(timeout: FiniteDuration): this.type = execute {
+
+    val temp = observations
+      .scanLeft(0)((x, y) => y match {
+        case y if y.isCorrect => x + 1
+        case y if y.isIncorrect => x - 1
+        case _ => x
+      }).zipWithIndex
+
+    val points = (temp.size.toDouble / 10000).round match {
+      case 0 => temp
+      case n => temp.filter{ case (y, index) => index % n == 0 }
+    }
+
+    def pythonBarChart: String = {
+      s"""
+         |import numpy as np
+         |import matplotlib.pyplot as plt
+         |
+         |
+         |ind = ${points.map{ case (y, index) => index }.mkString("[",",","]")}
+         |
+         |fig = plt.figure('Semi-supervised training summary')
+         |
+         |${points.map{ case (y, index) => y }.mkString("plt.scatter(ind, [", ",", "])")}
+         |
+         |plt.title('success/failure trend (positive-slope=success, negative-slope=failure)')
+         |plt.xlabel('Classification number')
+         |plt.ylabel('successes minus failures')
+         |plt.grid(True, linestyle = 'dashed')
+         |
+         |ax = plt.gca()
+         |${points.lastOption.map{ case (y, index) => s"ax.set_ylim([${-index}, $index])" }.getOrElse("")}
+         |
+         |plt.show()
+         |""".stripMargin
+    }
+
+    Python.execute(pythonBarChart) match {
+      case Failure(exception) => System.err.println(s"Error scattering train-history: ${exception.getMessage}")
+      case Success(value) =>
+    }
   }
 }

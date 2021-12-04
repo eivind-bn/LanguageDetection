@@ -1,4 +1,5 @@
 import scala.concurrent.duration.{DurationInt, FiniteDuration}
+import scala.util.{Failure, Success}
 
 /**
  * Class used to analyse results of classifications.
@@ -99,6 +100,9 @@ class TestResult(data: Seq[(Language, Seq[Language#Word])]){
          |""".stripMargin
     }
 
-    Python.execute(pythonBarChart)
+    Python.execute(pythonBarChart) match {
+      case Failure(exception) => exception
+      case Success(value) =>
+    }
   }
 }
