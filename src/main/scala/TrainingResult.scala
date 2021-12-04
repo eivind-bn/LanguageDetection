@@ -182,7 +182,7 @@ class TrainingResult(data: Seq[(Language, TestResult)]) {
       case n => temp.filter{ case (y, index) => index % n == 0 }
     }
 
-    def pythonBarChart: String = {
+    def pythonViabilityTrend: String = {
       s"""
          |import numpy as np
          |import matplotlib.pyplot as plt
@@ -206,7 +206,7 @@ class TrainingResult(data: Seq[(Language, TestResult)]) {
          |""".stripMargin
     }
 
-    Python.execute(pythonBarChart) match {
+    Python.execute(pythonViabilityTrend) match {
       case Failure(exception) => System.err.println(s"Error scattering train-history: ${exception.getMessage}")
       case Success(value) =>
     }
