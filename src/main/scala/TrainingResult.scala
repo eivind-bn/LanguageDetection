@@ -1,5 +1,3 @@
-import scala.annotation.tailrec
-import scala.collection.immutable.{AbstractSeq, LinearSeq}
 import scala.concurrent.duration.FiniteDuration
 import scala.util.{Failure, Success}
 
@@ -109,7 +107,7 @@ class TrainingResult(data: Seq[(Language, TestResult)]) {
     }
 
     Python.execute(pythonBarChart) match {
-      case Failure(exception) => exception.printStackTrace()
+      case Failure(exception) => System.err.println(s"Error plotting axiom/induction barchart: ${exception.getMessage}")
       case Success(value) =>
     }
   }
@@ -163,7 +161,7 @@ class TrainingResult(data: Seq[(Language, TestResult)]) {
     }
 
     Python.execute(pythonBarChart) match {
-      case Failure(exception) => exception.printStackTrace()
+      case Failure(exception) => System.err.println(s"Error plotting true/false barchart: ${exception.getMessage}")
       case Success(value) =>
     }
   }
@@ -177,7 +175,7 @@ class TrainingResult(data: Seq[(Language, TestResult)]) {
         case _ => x
       }).zipWithIndex
 
-    val points = (temp.size.toDouble / 10000).round match {
+    val points = (temp.size.toDouble / 13000).round match {
       case 0 => temp
       case n => temp.filter{ case (y, index) => index % n == 0 }
     }

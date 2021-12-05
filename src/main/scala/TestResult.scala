@@ -101,7 +101,7 @@ class TestResult(data: Seq[(Language, Seq[Language#Word])]){
     }
 
     Python.execute(pythonBarChart) match {
-      case Failure(exception) => exception
+      case Failure(exception) => System.err.println(s"Error plotting classification barchart: ${exception.getMessage}")
       case Success(value) =>
     }
   }

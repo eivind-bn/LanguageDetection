@@ -378,7 +378,7 @@ object Language{
    */
 
   def forName(name: String): Option[Language] = name.strip().toLowerCase match {
-    case "thai" => Some(Thai)
+
     case "indonesian" => Some(Indonesian)
     case "spanish" => Some(Spanish)
     case "estonian" => Some(Estonian)
@@ -388,9 +388,10 @@ object Language{
     case "latin" => Some(Latin)
     case "persian" => Some(Persian)
     /*
-    Chinese, japanese and korean commented out for testing purposes.
+    Chinese, japanese, korean and thai commented out for testing purposes.
     These languages impacts success-rate badly due to different whitespace policy.
     */
+//    case "thai" => Some(Thai)
 //    case "chinese" => Some(Chinese)
 //    case "japanese" => Some(Japanese)
 //    case "korean" => Some(Korean)
