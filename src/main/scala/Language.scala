@@ -263,7 +263,7 @@ sealed trait Language { lang:Product =>
  * Declared languages supported by this model.
  */
 
-case object Thai extends Language.Explicit(Language.Letters.thai)
+case object Thai extends Language.Explicit(Language.Letters.thai) with Language.WhitespaceIgnored
 case object Korean extends Language.Scripted(HANGUL, HAN) with Language.WhitespaceIgnored
 case object Indonesian extends Language.Blocked(BASIC_LATIN)
 case object Spanish extends Language.Explicit(Language.Letters.spanish)
