@@ -175,7 +175,7 @@ class TrainingResult(data: Seq[(Language, TestResult)]) {
         case _ => x
       }).zipWithIndex
 
-    val points = (temp.size.toDouble / 13000).round match {
+    val points = (temp.size.toDouble / 10000).round match {
       case 0 => temp
       case n => temp.filter{ case (y, index) => index % n == 0 }
     }

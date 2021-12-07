@@ -1,9 +1,8 @@
 
 import Language.WhitespaceIgnored
 
-import java.lang.Character.UnicodeBlock._
-import java.lang.Character.UnicodeScript.{HIRAGANA => Hiragana, KATAKANA => Katakana, _}
-import java.lang.Character.{UnicodeBlock, UnicodeScript}
+import java.lang.Character.UnicodeScript
+import java.lang.Character.UnicodeScript.{HAN, HANGUL, THAI, HIRAGANA => Hiragana, KATAKANA => Katakana}
 import scala.collection.mutable
 import scala.io.Source
 import scala.util.Random
@@ -249,8 +248,15 @@ sealed trait Language { lang:Product =>
  * Declared languages supported by this model.
  */
 
-case object Thai extends Language
-case object Korean extends Language with WhitespaceIgnored
+case object Thai extends Language with WhitespaceIgnored {
+  override def isValidChar(char: Char): Boolean = UnicodeScript.of(char) == THAI
+}
+case object Korean extends Language with WhitespaceIgnored{
+  override def isValidChar(char: Char): Boolean = UnicodeScript.of(char) match {
+    case script if script == HANGUL || script == HAN => true
+    case _ => false
+  }
+}
 case object Indonesian extends Language
 case object Spanish extends Language
 case object Russian extends Language
@@ -260,8 +266,15 @@ case object Estonian extends Language
 case object Dutch extends Language
 case object Portugese extends Language
 case object Persian extends Language
-case object Japanese extends Language with WhitespaceIgnored
-case object Chinese extends Language with WhitespaceIgnored
+case object Japanese extends Language with WhitespaceIgnored{
+  override def isValidChar(char: Char): Boolean = UnicodeScript.of(char) match {
+    case script if script == Hiragana || script == Katakana || script == HAN => true
+    case _ => false
+  }
+}
+case object Chinese extends Language with WhitespaceIgnored{
+  override def isValidChar(char: Char): Boolean = UnicodeScript.of(char) == HAN
+}
 case object Hindi extends Language
 case object French extends Language
 case object Turkish extends Language
@@ -361,12 +374,21 @@ object Language{
    * Some languages may not distinguish words by whitespace. This mixin trait can be applied to such languages
    * if such languages doesnt have a known policy for splitting words. If this trait is applied,
    * every character will be interpreted as a unique word instead.
+   *
+   * NOTE!!
+   *
+   * Languages which incorporate this trait must be bounded by a limited charset, and must never intersect
+   * codepoints likely to occur in other languages unless that language also subtypes this trait.
+   * Failure to comply cause a major bias in the model, and non-subtypes will likely never be classified.
    */
 
   trait WhitespaceIgnored{ this:Language =>
+    def isValidChar(char: Char): Boolean
+
     override protected def splitWords(text: String): Array[String] = text
       .filter(char => char.isLetter)
       .map(_.toLower)
+      .filter(isValidChar)
       .map(_.toString)
       .toArray
   }
@@ -378,7 +400,6 @@ object Language{
    */
 
   def forName(name: String): Option[Language] = name.strip().toLowerCase match {
-
     case "indonesian" => Some(Indonesian)
     case "spanish" => Some(Spanish)
     case "estonian" => Some(Estonian)
@@ -387,14 +408,10 @@ object Language{
     case "arabic" => Some(Arabic)
     case "latin" => Some(Latin)
     case "persian" => Some(Persian)
-    /*
-    Chinese, japanese, korean and thai commented out for testing purposes.
-    These languages impacts success-rate badly due to different whitespace policy.
-    */
-//    case "thai" => Some(Thai)
-//    case "chinese" => Some(Chinese)
-//    case "japanese" => Some(Japanese)
-//    case "korean" => Some(Korean)
+    case "thai" => Some(Thai)
+    case "chinese" => Some(Chinese)
+    case "japanese" => Some(Japanese)
+    case "korean" => Some(Korean)
     case "hindi" => Some(Hindi)
     case "french" => Some(French)
     case "turkish" => Some(Turkish)
