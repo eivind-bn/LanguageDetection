@@ -263,7 +263,7 @@ sealed trait Language { lang:Product =>
  * Declared languages supported by this model.
  */
 
-case object Thai extends Language.Explicit(Language.Letters.thai)
+case object Thai extends Language.Scripted(UnicodeScript.THAI) with Language.WhitespaceIgnored
 case object Korean extends Language.Scripted(HANGUL, HAN) with Language.WhitespaceIgnored
 case object Indonesian extends Language.Blocked(BASIC_LATIN)
 case object Spanish extends Language.Explicit(Language.Letters.spanish)
@@ -319,7 +319,8 @@ object Language{
    * @param name the name of the file.
    */
 
-  def loadFromResource(regex: Regex, name: String): Unit = readData(regex, name)
+  def loadFromResource(regex: Regex, name: String, selection: Set[Language]): Unit = readData(regex, name)
+    .filter{ case (language, text) => selection.contains(language) }
     .foreach{ case (language, text) => language.loadLabeledData(text) }
 
   /**
@@ -332,10 +333,13 @@ object Language{
    * @return Training result. Allows further examining of the data.
    */
 
-  def loadFromResource(regex: Regex, name: String, unlabeledRatio: Double): TrainingResult =
-    Random.shuffle(readData(regex, name)) match {
+  def loadFromResource(regex: Regex, name: String, unlabeledRatio: Double, selection: Set[Language]): TrainingResult =
+    Random.shuffle(readData(regex, name))
+      .filter{ case (language, text) => selection.contains(language) } match {
     case data =>
-      val (unlabeledData, labeledData) = data.splitAt((data.length * unlabeledRatio).toInt)
+      val (unlabeledData, labeledData) = data
+        .splitAt((data.length * unlabeledRatio).toInt)
+
       labeledData.foreach{ case (language, text) => language.loadLabeledData(text) }
       new TrainingResult(unlabeledData.map{ case (language, text) => (language, classifyLanguage(text)) })
   }

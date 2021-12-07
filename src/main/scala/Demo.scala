@@ -10,6 +10,32 @@ object Demo extends App {
   val csvParser: Regex = "(?<text>[\\S\\s]+?),(?<language>\\S+)".r
   val resource = "dataset-modded.csv"
 
+  def promptSelections(): Set[Language] = {
+
+    val selections: IndexedSeq[Set[Language]] = IndexedSeq(
+      Set(English, Spanish),
+      Set(Estonian, Dutch, Swedish),
+      Set(Korean, Urdu, French, Portugese, Chinese),
+      Set(Nynorsk, Bokmål),
+      Set(Russian, Thai, Tamil, Japanese, Turkish, Latin, Indonesian, Pushto, Persian, Romanian),
+      Language.values.filterNot(lang => lang == Bokmål || lang == Nynorsk),
+      Language.values
+    )
+    val args = selections.zipWithIndex.map{
+      case (value, 5) => s"${6}. All except 'Bokmål' and 'Nynorsk'}"
+      case (value, 6) => s"${7}. All languages"
+      case (value, i) => s"${i+1}. ${value.mkString(", ")}"}
+      .mkString("\n")
+
+    val number = readLine(s"""
+        |Which selection to use?
+        |$args
+        |""".stripMargin).toIntOption.map(_ - 1)
+
+    number
+      .flatMap(selections.unapply)
+      .getOrElse(promptSelections())
+  }
 
   /**
    * Applies the data-set to the language-detection model.
@@ -49,12 +75,12 @@ object Demo extends App {
   def initiateModel(): Unit = Try(readLine("Specify percent allocated to unsupervised training: ").toDouble) match {
 
     // Digest the data-set as train-data only. The complete startup-phase is conducted with guided learning.
-    case Success(value) if value == 0.0  => Language.loadFromResource(csvParser, resource)
+    case Success(value) if value == 0.0  => Language.loadFromResource(csvParser, resource, promptSelections())
 
     // Data is partitioned into train and validation chunks.
     // Both guided learning and continuous learning occurs through the startup-phase.
     case Success(value) if value > 0.0 && value < 100.0 => Language
-      .loadFromResource(csvParser, resource, value / 100)
+      .loadFromResource(csvParser, resource, value / 100, promptSelections())
       .printTrainingSummary()
       .validationBarChart(timeout = 10.minutes)
       .plotAxiomDistribution(timeout = 10.minutes)
