@@ -10,6 +10,7 @@ object Demo extends App {
   val csvParser: Regex = "(?<text>[\\S\\s]+?),(?<language>\\S+)".r
   val resource = "dataset-modded.csv"
 
+  @tailrec
   def promptSelections(): Set[Language] = {
 
     val selections: IndexedSeq[Set[Language]] = IndexedSeq(
@@ -32,9 +33,11 @@ object Demo extends App {
         |$args
         |""".stripMargin).toIntOption.map(_ - 1)
 
-    number
-      .flatMap(selections.unapply)
-      .getOrElse(promptSelections())
+
+    number.flatMap(selections.unapply) match {
+      case Some(value) => value
+      case None => promptSelections()
+    }
   }
 
   /**
