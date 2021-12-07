@@ -23,6 +23,14 @@ class TrainingResult(data: Seq[(Language, TestResult)]) {
      */
 
     def isIncorrect: Boolean = testResult.findWinner.exists(_.language != correctLanguage)
+
+    /**
+     * Tests if classification is undefined.
+     * @return True if undefined.
+     */
+
+    def isNonClassified: Boolean = testResult.findWinner.isEmpty
+
   }
 
   val observations: Seq[Observation] = data
@@ -46,7 +54,7 @@ class TrainingResult(data: Seq[(Language, TestResult)]) {
   def printTrainingSummary(): this.type = execute{
     val rights = observations.filter(_.isCorrect)
     val wrongs = observations.filter(_.isIncorrect)
-    val nulls = observations.filterNot(obs => obs.isCorrect || obs.isIncorrect)
+    val nulls = observations.filter(_.isNonClassified)
     println(
       s"""
          |Training summary:${Console.GREEN}
