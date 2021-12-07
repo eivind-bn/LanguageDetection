@@ -345,7 +345,7 @@ object Language{
   }
 
   /**
-   * Classifies the provided test-data, then returns TestResult-object which
+   * Classifies the provided test-data, then returns Test Result-object which
    * can be used to analyse the result.
    * @param sample Sample of arbitrary many words.
    * @return TestResult which may be used to analyse result.
