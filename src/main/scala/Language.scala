@@ -24,55 +24,24 @@ sealed trait Language { lang:Product =>
   //Mutable object. Limit scope as much as possible.
   private[this] val entries: mutable.HashMap[String,Word] = mutable.HashMap()
 
-  /**
-   * Returns a immutable collection of every word contained in this language.
-   * Every word is also copied to an immutable instance to ensure the score is stable.
-   *
-   * @return Every word presently contained in this language.
-   */
-  def vocabulary: Set[Word] = entries.values.map(_.copy).toSet
+  def vocabulary: Set[Word] = entries
+    .values
+    .filterNot(_.score == 0.0)
+    .map(_.toImmutable)
+    .toSet
 
-  /**
-   * Assumes data is 100% correct with respect to this language, and inserts immutable instances of words into
-   * its vocabulary. Since data is assumed correct, and instances are immutable, weights associated with
-   * this words will never change.
-   *
-   * @param text Can be a string of arbitrary number of words.
-   *             The string is split into words, and each respective word is inserted into the vocabulary if
-   *             they satisfy this language letter encoding. Non-letter are simply ignored.
-   * @return The inserted words.
-   */
-
-  def loadLabeledData(text: String): Seq[Word] = splitWords(text)
-    .map(Word.makeAxiom)
+  def loadAxioms(text: String): Seq[Word] = splitWords(text)
+    .map(Axiom)
     .tapEach(word => entries.update(word.text, word))
     .toSeq
 
-  /**
-   * Loads words into this language if at least one word exist already. These words are mutable instances
-   * with adjustable weights. Weights are always initially 0, but may be adjusted after creation.
-   *
-   * @param text Can be a string of arbitrary number of words.
-   *             The string is split into words, and each respective word is inserted into the vocabulary if
-   *             they satisfy this language letter encoding. Non-letter are simply ignored.
-   * @return The words already present in vocabulary, and the newly discovered ones if any.
-   */
+  def loadInductions(text: String): Seq[Word] = splitWords(text) match {
+    case text if text.exists(entries.contains) => text
+      .map(text => entries.getOrElseUpdate(text, Induction(text)))
+      .toSeq
 
-  private[Language] def loadNonLabeledData(text: String): Seq[Word] = splitWords(text) match {
-    // Insert testdata in this language only if at least one word exist in it already.
-    case text if text.exists(entries.contains) => text.map(text => entries.getOrElseUpdate(text, Word.makeInduction(text))).toSeq
     case _ => Seq.empty
   }
-
-
-  /**
-   * Splits a string of arbitrary words into its respective words. Every invalid codepoint should also be filtered out.
-   * This method defaults to splitting word by whitespace or dashes. Any language which distinguish word by
-   * other policies need to override this method.
-   *
-   * @param text text of arbitrary word length to split.
-   * @return Every legal word for this language.
-   */
 
   protected[this] def splitWords(text: String): Array[String] = text
     .strip()
@@ -81,166 +50,53 @@ sealed trait Language { lang:Product =>
     .split("[\\s-]+")
     .filter(word => word.nonEmpty)
 
-  /**
-   * Trait for every word of this instance. May or may not be mutable.
-   */
 
-  sealed trait Word extends CharSequence { self =>
-
-    /**
-     * Unwrapped version of this word.
-     */
-
+  sealed trait Word {
     val text: String
-
-    /**
-     * The current score, i.e. weight of this word. The number must be in the range: 0.0 <= w <= 1.0
-     *
-     * @return The current score.
-     */
 
     def score: Double
 
-    /**
-     * Discards this word from its language.
-     */
+    protected[Language] def meanAdjust(meanTotal: Double): Unit
+
+    def confidence: Int = (score * 100).toInt
 
     private[Language] def invalidate(): Unit = entries.remove(text)
 
-    /**
-     * Returns the outer instance of this particular word.
-     *
-     * @return The language that owns this instance.
-     */
-
     def language: Language = lang
 
-    /**
-     * May or may not actually mutate the word depending on the subtype definition. If this word is desired
-     * as immutable, then the subtype may simply override this method without any statements (NOOP).
-     *
-     * @param meanTotal Average score of all words in sample text.
-     */
+    def toImmutable: Word
 
-    protected[Language] def meanAdjust(meanTotal: Double): Unit
-    override def length(): Int = text.length
-    override def charAt(index: Int): Char = text.charAt(index)
-    override def subSequence(start: Int, end: Int): CharSequence = text.subSequence(start, end)
-
-    /**
-     * Returns a safe immutable copy of this object with score eagerly computed. This is necessary if
-     * score is too be preserved for statistical analysis.
-     * @return A anonymous instance with stable and eagerly computed attributes.
-     */
-
-    def copy: Word = new Word {
-      override val text: String = self.text
-      override val score: Double = self.score
-      override protected[Language] def meanAdjust(meanTotal: Double): Unit = {/*NOOP*/}
-
-    }
     override def equals(obj: Any): Boolean = obj match {
       case other: Word => this.text.equalsIgnoreCase(other.text)
-      case other: String => this.text.equalsIgnoreCase(other)
       case _ => false
     }
   }
-  private[this] object Word{
 
-    /**
-     * Produces a anonymous word instance with immutable fields. Weight of this word is always 1.0 (the max-value),
-     * and will never be influenced may adjustments.
-     * @param _text The properly formatted textual representation of this word (assumed to be correct).
-     * @return The new word.
-     */
+  private[this] case class Axiom(override val text: String) extends Word {
 
-    def makeAxiom(_text: String): Word = new Word {
-      override val text: String = _text
+    override def score: Double = 1.0
+
+    override protected[Language] def meanAdjust(meanTotal: Double): Unit = {/*NOOP*/}
+
+    override def toImmutable: Axiom = this
+
+    override def toString: String = s"${lang.productPrefix}.Word($text)"
+  }
+
+  private[this] case class Induction(override val text: String) extends Word{ self =>
+
+    protected[this] var _score: Double = entries.get(text).map(_.score).getOrElse(0.0)
+
+    override def score: Double = _score
+
+    override protected[Language] def meanAdjust(meanTotal: Double): Unit = _score = (_score + meanTotal)/2
+
+    override def toImmutable: Induction = new Induction(text){
+      override val score: Double = self.score
       override protected[Language] def meanAdjust(meanTotal: Double): Unit = {/*NOOP*/}
-      override def score: Double = 1.0
-      override def toString: String = s"${lang.productPrefix}.Word($text)"
     }
 
-    /**
-     * Produces a anonymous word instance with mutable fields. Weight of this word is initially the same
-     * as other equal entries if any, or else 0.0 (the min-value).
-     *
-     * @param _text The properly formatted textual representation of this word (assumed to be correct).
-     * @return The new word.
-     */
-
-    def makeInduction(_text: String): Word = new Word {
-      override val text: String = _text
-
-      /**
-       * Current weight state of this word.
-       */
-
-      private[this] var _score: Double = entries.get(text).map(_.score).getOrElse(0.0)
-      override def score: Double = _score
-
-      /**
-       * Yields score represented in percent. Note that this number is just a weight, not actually the
-       * probability of being a authentic word. The machine cannot predict this.
-       *
-       * @return The weight in percent.
-       */
-
-      def percent: Int = (score * 100).toInt
-
-      /**
-       *
-       * Method which performs the actual weight adjustment. For adjustment to happen, the minimum-word
-       * threshold of this word must be surpassed. The math:
-       *
-       * 1. Calculate the average weight of all words.
-       * 2. Calculate average of previously mentioned average, and the current weight in this word.
-       *
-       * Step 1 ensures the new score considers the whole sentence.
-       * Step 2 ensures the new score is not applied in too strong magnitude too fast.
-       *
-       * For illustrative purposes, say the model encounters these 2 words:
-       *
-       * English.Word("hello", w=0.25), English.Word("world", w=0.75)
-       *
-       * Model has concluded the sample is english. Now it needs to make weight adjustments.
-       *
-       * After => English.Word("hello", w=0.375), English.Word("world", w=0.625)
-       *
-       * The idea is that the model is uncertain that English.Word("hello", w=0.25) is actually english.
-       * However, it's more more certain that English.Word("world", w=0.75) is english judging by the current weight.
-       * After adjustment, the model gained confidence that English.Word("hello", w=0.375) is english,
-       * But lost some confidence in English.Word("world", w=0.625). After infinitely many iterations, the score will
-       * converge at the midpoint.
-       *
-       * 0. English.Word("hello", w=0.25), English.Word("world", w=0.75)
-       * 1. English.Word("hello", w=0.375), English.Word("world", w=0.625)
-       * 2. English.Word("hello", w=0.4375), English.Word("world", w=0.5625)
-       * 3. English.Word("hello", w=0.46875), English.Word("world", w=0.53125)
-       * 4. English.Word("hello", w=0.484375), English.Word("world", w=0.51576)
-       *
-       *
-       * Now lets illustrate the same case, but let 1 word be the immutable counterpart instead.
-       *
-       * 0. English.Word("hello", w=0.25), English.ImmutableWord("world", w=1.00)
-       * 1. English.Word("hello", w=0.4375), English.ImmutableWord("world", w=1.00)
-       * 2. English.Word("hello", w=0.578125), English.ImmutableWord("world", w=1.00)
-       * 3. English.Word("hello", w=0.68359), English.ImmutableWord("world", w=1.00)
-       * 4. English.Word("hello", w=0.76269), English.ImmutableWord("world", w=1.00)
-       *
-       * In this scenario the model encountered a train-data word which can be though of as an axiom.
-       * The model became more and more confident that English.Word("hello", w=0.25) is english,
-       * whilst loosing no confidence in English.ImmutableWord("world", w=1.00) since it's sourced from the
-       * train-data and therefore must be correct. After infinitely many iterations, the model will
-       * have 100% confidence in "hello" as well.
-       *
-       * @param meanTotal Average score of all words in sample text.
-       */
-
-      override protected[Language] def meanAdjust(meanTotal: Double): Unit = _score = (_score + meanTotal)/2
-
-      override def toString: String = s"${lang.productPrefix}.Word($text p=$percent%)"
-    }
+    override def toString: String = s"${lang.productPrefix}.Word($text w=$confidence%)"
   }
 }
 
@@ -318,28 +174,31 @@ object Language{
    * @param name the name of the file.
    */
 
-  def loadFromResource(regex: Regex, name: String): Unit = readData(regex, name)
-    .foreach{ case (language, text) => language.loadLabeledData(text) }
+  def loadAxiomResource(regex: Regex, name: String): Unit = readData(regex, name)
+    .foreach{ case (language, text) => language.loadAxioms(text) }
+
+  def loadSampleResource(regex: Regex, name: String): TrainingResult = new TrainingResult(
+    Random.shuffle(readData(regex, name)).map { case (language, text) => (language, classifyLanguage(text)) }
+  )
 
   /**
    * Loads dataset from resources. Then performs semi-supervised training according to the ratio given.
    * The data is always shuffled before it's forwarded to the model.
    * @param regex csvParser to read the data.
    * @param name name of the file.
-   * @param unlabeledRatio A double in the range <0,1>. This percent-factor determines how much of
+   * @param axiomAlloc A double in the range <0,1>. This percent-factor determines how much of
    *                        the dataset is stripped out to be used for unsupervised learning instead.
    * @return Training result. Allows further examining of the data.
    */
 
-  def loadFromResource(regex: Regex, name: String, unlabeledRatio: Double): TrainingResult = {
+  def loadFromResource(regex: Regex, name: String, axiomAlloc: Double): TrainingResult = {
     val data = Random.shuffle(readData(regex, name))
 
-    val (unlabeledData, labeledData) = data.splitAt((data.length * unlabeledRatio).toInt)
+    val (axioms, samples) = data.splitAt((data.length * axiomAlloc).toInt)
 
-    for((language, text) <- labeledData) language.loadLabeledData(text)
+    for((language, text) <- axioms) language.loadAxioms(text)
 
-    val result = unlabeledData
-      .map{ case (language, text) => (language, classifyLanguage(text)) }
+    val result = samples.map{ case (language, text) => (language, classifyLanguage(text)) }
 
     new TrainingResult(result)
   }
@@ -353,11 +212,11 @@ object Language{
 
   def classifyLanguage(sample: String): TestResult = {
     val temp = values
-      .map(lang => (lang, lang.loadNonLabeledData(sample))) // Parse input text
+      .map(lang => (lang, lang.loadInductions(sample))) // Parse input text
       .map{ case (language, words) => (language, words.map(_.score).sum, words) } // Calculate score by language
 
     val result = temp
-      .map{ case (language, score, words) => (language, words.map(_.copy)) } // Make immutable copies to save current score.
+      .map{ case (language, score, words) => (language, words.map(_.toImmutable)) } // Make immutable copies to save current score.
       .toSeq
 
     for{
@@ -376,10 +235,9 @@ object Language{
    * every character will be interpreted as a unique word instead.
    *
    * NOTE!!
-   *
-   * Languages which incorporate this trait must be bounded by a limited charset, and must never intersect
+   * Languages which incorporate this trait must be bounded by a limited charset, and must never use
    * codepoints likely to occur in other languages unless that language also subtypes this trait.
-   * Failure to comply cause a major bias in the model, and non-subtypes will likely never be classified.
+   * Failure to comply will cause a major bias in the model, and non-subtypes will likely never be classified.
    */
 
   trait WhitespaceIgnored{ this:Language =>
@@ -426,11 +284,6 @@ object Language{
     case "nynorsk" => Some(Nynorsk)
     case _ => None
   }
-
-  /**
-   * List of all language objects incorporated in the detection-model.
-   * @return The list of languages.
-   */
 
   val values: Set[Language] = Set(
     Thai,
