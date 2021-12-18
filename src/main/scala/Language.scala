@@ -72,7 +72,7 @@ sealed trait Language { lang:Product =>
     }
   }
 
-  private[this] case class Axiom(override val text: String) extends Word {
+  case class Axiom(override val text: String) extends Word {
 
     override def score: Double = 1.0
 
@@ -83,7 +83,7 @@ sealed trait Language { lang:Product =>
     override def toString: String = s"${lang.productPrefix}.Word($text)"
   }
 
-  private[this] case class Induction(override val text: String) extends Word{ self =>
+  case class Induction(override val text: String) extends Word{ self =>
 
     protected[this] var _score: Double = entries.get(text).map(_.score).getOrElse(0.0)
 

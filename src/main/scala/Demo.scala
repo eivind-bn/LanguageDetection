@@ -23,7 +23,6 @@ object Demo extends App {
       .printTrainingSummary()
       .validationBarChart(timeout = 10.minutes)
       .plotAxiomDistribution(timeout = 10.minutes)
-      .scatterViabilityTrend(timeout = 10.minutes)
 
     case Success(_) =>
       println("Value must be bounded as follows: 0.0 < p <= 100.0. Please try again.")
@@ -36,6 +35,7 @@ object Demo extends App {
 
   println(Console.RED + "Note: Python3, numpy and matplotlib required. " +
     "Ignore this if dependencies is properly installed" + Console.RESET)
+
 
   initiateModel()
 
